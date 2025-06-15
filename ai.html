@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Game Observer & AI vs AI Mode</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e8f4f8 0%, #f0f8ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #2c3e50;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #34495e;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+
+        /* ========================= GAME MODE CONTROLS ========================= */
+        .game-mode-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 15px;
+            background: rgba(248, 249, 250, 0.5);
+            border-radius: 8px;
+        }
+
+        .ai-strategy-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .strategy-selection {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .player-strategy {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .strategy-display {
+            font-size: 0.9em;
+            color: #666;
+            font-style: italic;
+            margin-left: 5px;
+        }
+
+        .advanced-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+        }
+
+        .advanced-controls label {
+            font-weight: 500;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+        }
+
+        .speed-control input[type="range"] {
+            width: 120px;
+        }
+
+        .speed-control label {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        /* ========================= CONTROLS ========================= */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .new-game-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .move-btn {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+            color: white;
+        }
+
+        .auto-play-btn {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            color: white;
+        }
+
+        .pause-btn {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            color: white;
+        }
+
+        .resume-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .stop-btn {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+            color: white;
+        }
+
+        /* ========================= GAME INFO ========================= */
+        .game-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .ai-vs-ai-info {
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+        }
+
+        .info-card {
+            background: rgba(248, 249, 250, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .info-card h3 {
+            margin: 0 0 8px 0;
+            color: #495057;
+            font-size: 1em;
+        }
+
+        .info-card .value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .current-player-x { color: #6c7b7f; }
+        .current-player-o { color: #708b75; }
+        .game-over { color: #dc3545; }
+        .game-running { color: #28a745; font-weight: bold; }
+        .game-paused { color: #ffc107; font-weight: bold; }
+        .game-error { color: #dc3545; font-weight: bold; }
+
+        .chain-info {
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+        }
+
+        /* ========================= PLAYER STATISTICS ========================= */
+        .player-stats-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(248, 249, 250, 0.8);
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .player-stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .player-stats {
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        .player-stats h3 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            text-align: center;
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .x-player {
+            border-color: #6c7b7f;
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+        }
+
+        .x-player h3 {
+            background: linear-gradient(45deg, #6c7b7f, #5a6c70);
+            color: white;
+        }
+
+        .o-player {
+            border-color: #708b75;
+            background: linear-gradient(45deg, #f0f8f0, #e8f5e8);
+        }
+
+        .o-player h3 {
+            background: linear-gradient(45deg, #708b75, #5f7a64);
+            color: white;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-item label {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .stat-item span {
+            font-weight: bold;
+            color: #212529;
+        }
+
+        /* ========================= THINKING INDICATOR ========================= */
+        .thinking-indicator {
+            text-align: center;
+            padding: 12px 20px;
+            margin: 10px 0;
+            background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1.1em;
+            animation: pulse 1.5s infinite;
+        }
+
+        .thinking-indicator.x {
+            color: #6c7b7f;
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            border-color: #6c7b7f;
+        }
+
+        .thinking-indicator.o {
+            color: #708b75;
+            background: linear-gradient(45deg, #f0f8f0, #e8f5e8);
+            border-color: #708b75;
+        }
+
+        /* ========================= BOARD ========================= */
+        .board-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .board-wrapper {
+            position: relative;
+            border: 2px solid #495057;
+            border-radius: 8px;
+            background: #f8f9fa;
+            padding: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .board-grid {
+            display: grid;
+            gap: 1px;
+            background: #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .diagonal-lines-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .cell {
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            position: relative;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .cell-number {
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            font-size: 6px;
+            color: #6c757d;
+            font-weight: normal;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .move-text {
+            font-size: 8px;
+            font-weight: bold;
+            line-height: 1;
+            text-align: center;
+        }
+
+        .cell.x .cell-number,
+        .cell.o .cell-number {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: bold;
+            text-shadow: 0 0 2px rgba(0,0,0,0.7);
+        }
+
+        .cell.x {
+            background: linear-gradient(45deg, #e8eaed, #d3d6da);
+            color: #6c7b7f;
+        }
+
+        .cell.o {
+            background: linear-gradient(45deg, #e8f2ea, #d4e6d7);
+            color: #708b75;
+        }
+
+        .cell.last-move {
+            box-shadow: 0 0 8px rgba(255, 193, 7, 0.8);
+            animation: pulse 1s infinite;
+        }
+
+        .cell.thinking {
+            background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+            animation: thinking-pulse 1s infinite;
+        }
+
+        /* ========================= GAME ANALYSIS ========================= */
+        .game-analysis {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(248, 249, 250, 0.9);
+            border: 2px solid #28a745;
+            border-radius: 8px;
+        }
+
+        .game-analysis h3 {
+            margin: 0 0 15px 0;
+            color: #28a745;
+            text-align: center;
+            font-size: 1.3em;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .analysis-item {
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .analysis-item strong {
+            color: #495057;
+        }
+
+        .strategy-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .player-analysis {
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+            border: 2px solid #dee2e6;
+        }
+
+        .player-analysis h5 {
+            margin: 0 0 10px 0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            text-align: center;
+            color: white;
+        }
+
+        .player-analysis:first-child h5 {
+            background: linear-gradient(45deg, #6c7b7f, #5a6c70);
+        }
+
+        .player-analysis:last-child h5 {
+            background: linear-gradient(45deg, #708b75, #5f7a64);
+        }
+
+        /* ========================= GAME MESSAGES ========================= */
+        .game-message {
+            padding: 12px 20px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-weight: 500;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        .game-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .game-message.warning {
+            background: #fff3cd;
+            color: #664d03;
+            border: 1px solid #ffecb5;
+        }
+
+        .game-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* ========================= ANIMATIONS ========================= */
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        @keyframes thinking-pulse {
+            0%, 100% { background: linear-gradient(45deg, #fff3cd, #ffeaa7); }
+            50% { background: linear-gradient(45deg, #ffeaa7, #fdcb6e); }
+        }
+
+        @keyframes dash {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: 10; }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ========================= DIAGONAL LINES ========================= */
+        .diagonal-line {
+            pointer-events: none;
+        }
+        
+        .diagonal-line-x {
+            stroke: #6c7b7f !important;
+        }
+        
+        .diagonal-line-o {
+            stroke: #708b75 !important;
+        }
+        
+        .diagonal-main-diagonal {
+            stroke-dasharray: 3,2;
+        }
+        
+        .diagonal-anti-diagonal {
+            stroke-dasharray: 4,1;
+        }
+
+        /* ========================= GAME LOG ========================= */
+        .game-log {
+            max-height: 250px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            padding: 5px 8px;
+            border-bottom: 1px solid #eee;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-entry:nth-child(even) {
+            background: rgba(248, 249, 250, 0.5);
+        }
+
+        /* ========================= AI THINKING ========================= */
+        .ai-thinking {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+        }
+
+        /* ========================= ADVANCED STATS ========================= */
+        .advanced-stat {
+            display: none;
+        }
+
+        /* Show advanced stats when enabled */
+        .show-advanced .advanced-stat {
+            display: block;
+        }
+
+        /* ========================= FORM CONTROLS ========================= */
+        select {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            font-size: 0.9em;
+            font-weight: 500;
+            color: #495057;
+            min-width: 120px;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #80bdff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,.25);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            border: none;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 5px;
+            transform: scale(1.1);
+        }
+
+        label {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        /* ========================= RESPONSIVE DESIGN ========================= */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .game-mode-controls {
+                flex-direction: column;
+                gap: 10px;
+                padding: 10px;
+            }
+            
+            .strategy-selection {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .player-strategy {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .game-info {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .ai-vs-ai-info {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .player-stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .analysis-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .strategy-comparison {
+                grid-template-columns: 1fr;
+            }
+
+            .control-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            button {
+                min-width: auto;
+                width: 100%;
+            }
+
+            .cell {
+                width: 20px;
+                height: 20px;
+                font-size: 7px;
+            }
+
+            .cell-number {
+                font-size: 5px;
+            }
+
+            .move-text {
+                font-size: 7px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+                margin: 5px;
+            }
+
+            .cell {
+                width: 18px;
+                height: 18px;
+                font-size: 6px;
+            }
+
+            .cell-number {
+                font-size: 4px;
+            }
+
+            .move-text {
+                font-size: 6px;
+            }
+
+            .ai-vs-ai-info {
+                grid-template-columns: 1fr;
+            }
+        }
+</style>
+</head>
+<body>
+    <!-- Keep all the existing HTML body content -->
+    <div class="container">
+        <h1>🤖 AI Game Observer & AI vs AI Mode</h1>
+        
+        <!-- Game Mode Selection -->
+        <div class="game-mode-controls">
+            <label>Game Mode:</label>
+            <select id="gameMode">
+                <option value="single_player" selected>Single Player (X Chain Test)</option>
+                <option value="ai_vs_ai">AI vs AI</option>
+            </select>
+            
+            <!-- AI vs AI Strategy Controls -->
+            <div id="aiStrategyControls" class="ai-strategy-controls" style="display: none;">
+                <div class="strategy-selection">
+                    <div class="player-strategy">
+                        <label>X Strategy:</label>
+                        <select id="xStrategy">
+                            <option value="chain">Chain Builder</option>
+                            <option value="aggressive-chain">Aggressive Chain</option>
+                            <option value="defensive-chain">Defensive Chain</option>
+                        </select>
+                    </div>
+                    <div class="player-strategy">
+                        <label>O Strategy:</label>
+                        <select id="oStrategy">
+                            <option value="chain">Chain Builder</option>
+                            <option value="aggressive-chain">Aggressive Chain</option>
+                            <option value="defensive-chain">Defensive Chain</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Speed Control -->
+            <div class="speed-control">
+                <label>Game Speed:</label>
+                <input type="range" id="gameSpeed" min="200" max="2000" value="800" step="100">
+                <span id="speedValue">800ms</span>
+            </div>
+            
+            <!-- Advanced Stats Toggle -->
+            <div class="advanced-controls">
+                <label>
+                    <input type="checkbox" id="showAdvancedStats">
+                    Show Advanced Stats
+                </label>
+            </div>
+        </div>
+
+        <!-- Game Controls -->
+        <div class="controls">
+            <!-- Single Player Controls -->
+            <div id="singlePlayerControls" class="control-group">
+                <button class="new-game-btn" onclick="startNewGame()">🎮 New Game</button>
+                <button class="move-btn" id="moveBtn" onclick="makeNextMove()" disabled>➡️ Next Move</button>
+                <button class="auto-play-btn" id="autoPlayBtn" onclick="toggleAutoPlay()" disabled>⚡ Auto Play</button>
+            </div>
+            
+            <!-- AI vs AI Controls -->
+            <div id="aivsaiControls" class="control-group" style="display: none;">
+                <button class="new-game-btn" id="startGameBtn" onclick="startAIvsAIGame()">🎮 Start AI vs AI</button>
+                <button class="pause-btn" id="pauseGameBtn" onclick="pauseAIvsAIGame()" disabled>⏸️ Pause</button>
+                <button class="resume-btn" id="resumeGameBtn" onclick="resumeAIvsAIGame()" disabled>▶️ Resume</button>
+                <button class="stop-btn" id="stopGameBtn" onclick="stopAIvsAIGame()" disabled>⏹️ Stop</button>
+            </div>
+        </div>
+
+        <!-- Game Info -->
+        <div class="game-info" id="gameInfoSection">
+            <!-- Single Player Info -->
+            <div id="singlePlayerInfo" class="info-display">
+                <div class="info-card">
+                    <h3>Current Player</h3>
+                    <div class="value" id="currentPlayer">-</div>
+                </div>
+                <div class="info-card">
+                    <h3>Move Count</h3>
+                    <div class="value" id="moveCount">0</div>
+                </div>
+                <div class="info-card">
+                    <h3>Game Status</h3>
+                    <div class="value" id="gameStatus">Not Started</div>
+                </div>
+            </div>
+            
+            <!-- AI vs AI Info -->
+            <div id="aivsaiInfo" class="info-display ai-vs-ai-info" style="display: none;">
+                <div class="info-card">
+                    <h3>Current Turn</h3>
+                    <div class="value" id="currentPlayer">-</div>
+                </div>
+                <div class="info-card">
+                    <h3>Move Count</h3>
+                    <div class="value" id="moveCount">0</div>
+                </div>
+                <div class="info-card">
+                    <h3>Game Status</h3>
+                    <div class="value" id="gameStatus">Ready</div>
+                </div>
+                <div class="info-card advanced-stat">
+                    <h3>Game Efficiency</h3>
+                    <div class="value" id="gameEfficiency">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Board Container -->
+        <div class="board-container">
+            <div class="board-wrapper">
+                <div id="gameBoard" class="board-grid">
+                    <!-- Board cells will be generated here by JavaScript -->
+                </div>
+                <svg id="diagonal-lines-svg" class="diagonal-lines-svg">
+                    <!-- Diagonal lines will be drawn here -->
+                </svg>
+            </div>
+        </div>
+
+        <!-- Game Log -->
+        <div class="game-log">
+            <div id="gameLog">
+                <div class="log-entry">Game ready - Select mode and start playing</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Imports -->
+    <script src="js/game-core.js"></script>
+    <script src="js/game-diagonal-lines.js"></script>
+    
+    <!-- AI Foundation -->
+    <script src="js/game-ai-base.js"></script>
+    <script src="js/game-ai-chain.js"></script>
+    <script src="js/game-ai-opponent-handler.js"></script>
+    <script src="js/game-ai-strategies.js"></script>
+    
+    <!-- Controllers -->
+    <script src="js/game-ai-controller.js"></script>
+    <script src="js/game-observer-ai-vs-ai.js"></script>
+    
+    <!-- Legacy Single Player -->
+    <script src="js/game-ai-test.js"></script>
+
+<!-- External Simple AI Script -->
+    <script src="js/simple-ai.js"></script>
+
+<script>
+    // ========================================================================
+    // CRITICAL GAMECORE FIXES - Keep these essential patches
+    // ========================================================================
+
+    // Enhanced ConnectionGameCore with separate player move numbering
+    if (typeof ConnectionGameCore !== 'undefined') {
+        const originalInitializeBoard = ConnectionGameCore.prototype.initializeBoard;
+        
+        ConnectionGameCore.prototype.initializeBoard = function() {
+            originalInitializeBoard.call(this);
+            this.playerMoveCount = { X: 0, O: 0 };
+        };
+        
+        const originalMakeMove = ConnectionGameCore.prototype.makeMove;
+        
+        ConnectionGameCore.prototype.makeMove = function(row, col, player = this.currentPlayer) {
+            if (!this.isValidMove(row, col)) {
+                return { success: false, reason: 'Invalid move' };
+            }
+
+            this.board[row][col] = player;
+            this.moveCount++;
+            
+            if (!this.playerMoveCount) {
+                this.playerMoveCount = { X: 0, O: 0 };
+            }
+            this.playerMoveCount[player]++;
+
+            this.gameHistory.push({
+                moveNumber: this.moveCount,
+                playerMoveNumber: this.playerMoveCount[player],
+                row: row,
+                col: col,
+                player: player,
+                boardState: JSON.parse(JSON.stringify(this.board))
+            });
+
+            this.updateDiagonalConnections();
+
+            const winResult = this.checkWin(player);
+            if (winResult.isWin) {
+                this.gameOver = true;
+                return {
+                    success: true,
+                    gameOver: true,
+                    winner: player,
+                    winType: winResult.type,
+                    winPath: winResult.path,
+                    playerMoveNumber: this.playerMoveCount[player]
+                };
+            }
+
+            this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+            return {
+                success: true,
+                gameOver: false,
+                moveNumber: this.moveCount,
+                playerMoveNumber: this.playerMoveCount[player],
+                nextPlayer: this.currentPlayer
+            };
+        };
+        
+        console.log('✅ ConnectionGameCore patched with player move numbering');
+    }
+
+    // ========================================================================
+    // SINGLE PLAYER CHAIN TEST OBSERVER
+    // ========================================================================
+
+    class ChainTestObserver {
+        constructor() {
+            this.gameCore = null;
+            this.singlePlayerAI = null;
+            this.diagonalLines = null;
+            this.isGameActive = false;
+            this.autoPlayInterval = null;
+            this.autoPlaySpeed = 1000;
+            this.boardSize = 15;
+            this.lastMovePosition = null;
+            
+            this.initializeGame();
+            this.setupEventListeners();
+        }
+
+        initializeGame() {
+            this.gameCore = new ConnectionGameCore(this.boardSize);
+            
+            if (typeof SinglePlayerChainAI !== 'undefined') {
+                try {
+                    this.singlePlayerAI = new SinglePlayerChainAI(this.gameCore);
+                    this.logMessage('Single Player Chain Building AI loaded successfully');
+                } catch (error) {
+                    console.error('Error creating SinglePlayerChainAI:', error);
+                    this.singlePlayerAI = null;
+                }
+            }
+            
+            this.createBoard();
+            
+            const svgElement = document.getElementById('diagonal-lines-svg');
+            if (svgElement && typeof ConnectionGameDiagonalLines !== 'undefined') {
+                setTimeout(() => {
+                    this.diagonalLines = new ConnectionGameDiagonalLines(this.gameCore, svgElement);
+                }, 100);
+            }
+            
+            this.updateDisplay();
+        }
+
+        setupEventListeners() {
+            const speedSlider = document.getElementById('gameSpeed');
+            const speedValue = document.getElementById('speedValue');
+            
+            if (speedSlider) {
+                speedSlider.addEventListener('input', (e) => {
+                    this.autoPlaySpeed = parseInt(e.target.value);
+                    if (speedValue) speedValue.textContent = this.autoPlaySpeed + 'ms';
+                });
+            }
+        }
+
+        createBoard() {
+            const boardElement = document.getElementById('gameBoard');
+            if (!boardElement) return;
+            
+            boardElement.innerHTML = '';
+            boardElement.style.gridTemplateColumns = `repeat(${this.boardSize}, 1fr)`;
+            
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    
+                    const cellNumber = document.createElement('div');
+                    cellNumber.className = 'cell-number';
+                    cellNumber.textContent = row * this.boardSize + col + 1;
+                    cell.appendChild(cellNumber);
+                    
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        updateBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const cellValue = this.gameCore.board[row][col];
+                
+                cell.classList.remove('x', 'o', 'last-move');
+                
+                const existingMoveText = cell.querySelector('.move-text');
+                if (existingMoveText) {
+                    existingMoveText.remove();
+                }
+                
+                if (cellValue === 'X') {
+                    cell.classList.add('x');
+                    const playerMoveNumber = this.getPlayerMoveNumber(row, col, 'X');
+                    
+                    const moveText = document.createElement('div');
+                    moveText.className = 'move-text';
+                    moveText.textContent = `X${playerMoveNumber}`;
+                    cell.appendChild(moveText);
+                }
+                
+                if (this.lastMovePosition && 
+                    this.lastMovePosition.row === row && 
+                    this.lastMovePosition.col === col) {
+                    cell.classList.add('last-move');
+                }
+            });
+            
+            if (this.diagonalLines) {
+                setTimeout(() => {
+                    this.diagonalLines.updateDiagonalLines();
+                }, 50);
+            }
+        }
+
+        getPlayerMoveNumber(row, col, player) {
+            if (!this.gameCore || !this.gameCore.gameHistory) return '';
+            
+            let playerMoveCount = 0;
+            for (const move of this.gameCore.gameHistory) {
+                if (move.player === player) {
+                    playerMoveCount++;
+                    if (move.row === row && move.col === col) {
+                        return playerMoveCount;
+                    }
+                }
+            }
+            return '';
+        }
+
+        updateDisplay() {
+            const currentPlayerEl = document.getElementById('currentPlayer');
+            const moveCountEl = document.getElementById('moveCount');
+            const gameStatusEl = document.getElementById('gameStatus');
+            
+            if (this.singlePlayerAI) {
+                try {
+                    const stats = this.singlePlayerAI.getStats();
+                    
+                    if (currentPlayerEl) {
+                        if (stats.isComplete) {
+                            currentPlayerEl.textContent = 'X (Complete!)';
+                            currentPlayerEl.className = 'value game-over';
+                        } else if (this.isGameActive) {
+                            currentPlayerEl.textContent = 'X (Chain AI)';
+                            currentPlayerEl.className = 'value current-player-x';
+                        } else {
+                            currentPlayerEl.textContent = '-';
+                            currentPlayerEl.className = 'value';
+                        }
+                    }
+                    
+                    if (gameStatusEl) {
+                        if (stats.isComplete) {
+                            gameStatusEl.textContent = 'Chain Complete!';
+                            gameStatusEl.className = 'value game-over';
+                        } else if (this.isGameActive) {
+                            gameStatusEl.textContent = 'Building Chain';
+                            gameStatusEl.className = 'value';
+                        } else {
+                            gameStatusEl.textContent = 'Ready';
+                            gameStatusEl.className = 'value';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error updating display:', error);
+                }
+            }
+            
+            if (moveCountEl) {
+                moveCountEl.textContent = this.gameCore.moveCount;
+            }
+            
+            const moveBtn = document.getElementById('moveBtn');
+            const autoPlayBtn = document.getElementById('autoPlayBtn');
+            
+            const gameIsComplete = this.singlePlayerAI && this.singlePlayerAI.getStats().isComplete;
+            
+            if (moveBtn) moveBtn.disabled = !this.isGameActive || gameIsComplete;
+            if (autoPlayBtn) autoPlayBtn.disabled = !this.isGameActive || gameIsComplete;
+            
+            if (gameIsComplete) {
+                this.stopAutoPlay();
+            }
+        }
+
+        startNewGame() {
+            this.gameCore.resetGame(this.boardSize);
+            this.isGameActive = true;
+            this.lastMovePosition = null;
+            this.stopAutoPlay();
+            
+            if (this.diagonalLines) {
+                this.diagonalLines.clear();
+            }
+            
+            if (this.singlePlayerAI) {
+                this.singlePlayerAI.reset();
+            }
+            
+            this.updateBoard();
+            this.updateDisplay();
+            this.logMessage('New chain building test started - X will build L/I-pattern chain');
+        }
+
+        async makeNextMove() {
+            if (!this.isGameActive || !this.singlePlayerAI) {
+                return;
+            }
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                const aiMove = this.singlePlayerAI.getNextMove();
+                
+                if (!aiMove) {
+                    this.logMessage('Chain building complete or no valid moves found');
+                    this.isGameActive = false;
+                    return;
+                }
+                
+                const result = this.gameCore.makeMove(aiMove.row, aiMove.col, 'X');
+                
+                if (result.success) {
+                    this.lastMovePosition = { row: aiMove.row, col: aiMove.col };
+                    
+                    const cellNumber = aiMove.row * this.boardSize + aiMove.col + 1;
+                    const playerMoveNum = result.playerMoveNumber || this.gameCore.moveCount;
+                    this.logMessage(`X${playerMoveNum} at (${aiMove.row},${aiMove.col}) [cell ${cellNumber}] - ${aiMove.reason || 'no reason'}`);
+                    
+                    this.updateBoard();
+                    this.updateDisplay();
+                    
+                    if (this.singlePlayerAI) {
+                        const stats = this.singlePlayerAI.getStats();
+                        if (stats.isComplete) {
+                            this.isGameActive = false;
+                            this.logMessage(`🎉 SUCCESS! Chain connected in ${stats.moveCount} moves!`);
+                            this.stopAutoPlay();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error making move:', error);
+                this.logMessage(`ERROR: ${error.message}`);
+            }
+        }
+
+        toggleAutoPlay() {
+            if (this.autoPlayInterval) {
+                this.stopAutoPlay();
+            } else {
+                this.startAutoPlay();
+            }
+        }
+
+        startAutoPlay() {
+            if (!this.isGameActive) return;
+            
+            const autoPlayBtn = document.getElementById('autoPlayBtn');
+            if (autoPlayBtn) {
+                autoPlayBtn.textContent = '⏸️ Stop Auto';
+            }
+            
+            this.autoPlayInterval = setInterval(() => {
+                if (!this.isGameActive) {
+                    this.stopAutoPlay();
+                    return;
+                }
+                
+                if (this.singlePlayerAI) {
+                    const stats = this.singlePlayerAI.getStats();
+                    if (stats.isComplete) {
+                        this.stopAutoPlay();
+                        return;
+                    }
+                }
+                
+                this.makeNextMove();
+            }, this.autoPlaySpeed);
+        }
+
+        stopAutoPlay() {
+            if (this.autoPlayInterval) {
+                clearInterval(this.autoPlayInterval);
+                this.autoPlayInterval = null;
+                
+                const autoPlayBtn = document.getElementById('autoPlayBtn');
+                if (autoPlayBtn) {
+                    autoPlayBtn.textContent = '⚡ Auto Play';
+                }
+            }
+        }
+
+        logMessage(message) {
+            const gameLog = document.getElementById('gameLog');
+            if (!gameLog) return;
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            gameLog.appendChild(logEntry);
+            
+            gameLog.scrollTop = gameLog.scrollHeight;
+            
+            while (gameLog.children.length > 50) {
+                gameLog.removeChild(gameLog.firstChild);
+            }
+            
+            console.log(message);
+        }
+    }
+
+    // ========================================================================
+    // GLOBAL VARIABLES AND FUNCTIONS
+    // ========================================================================
+
+    let gameObserver;
+    let aivsaiObserverInstance;
+
+    // Single Player Functions
+    function startNewGame() {
+        if (gameObserver) {
+            gameObserver.startNewGame();
+        }
+    }
+
+    function makeNextMove() {
+        if (gameObserver) {
+            gameObserver.makeNextMove();
+        }
+    }
+
+    function toggleAutoPlay() {
+        if (gameObserver) {
+            gameObserver.toggleAutoPlay();
+        }
+    }
+
+    // AI vs AI Functions
+    function startAIvsAIGame() {
+        if (typeof replaceWithSimpleAI === 'function') {
+            if (!aivsaiObserverInstance) {
+                replaceWithSimpleAI();
+            }
+            if (aivsaiObserverInstance && aivsaiObserverInstance.handleStartGame) {
+                aivsaiObserverInstance.handleStartGame();
+            }
+        } else {
+            console.error('Simple AI not loaded');
+        }
+    }
+
+    function pauseAIvsAIGame() {
+        if (aivsaiObserverInstance && aivsaiObserverInstance.handlePauseGame) {
+            aivsaiObserverInstance.handlePauseGame();
+        }
+    }
+
+    function resumeAIvsAIGame() {
+        if (aivsaiObserverInstance && aivsaiObserverInstance.handleResumeGame) {
+            aivsaiObserverInstance.handleResumeGame();
+        }
+    }
+
+    function stopAIvsAIGame() {
+        if (aivsaiObserverInstance && aivsaiObserverInstance.handleStopGame) {
+            aivsaiObserverInstance.handleStopGame();
+        }
+    }
+
+    // Game Mode Switching
+    function switchGameMode(mode) {
+        const singlePlayerControls = document.getElementById('singlePlayerControls');
+        const aivsaiControls = document.getElementById('aivsaiControls');
+        const singlePlayerInfo = document.getElementById('singlePlayerInfo');
+        const aivsaiInfo = document.getElementById('aivsaiInfo');
+        const aiStrategyControls = document.getElementById('aiStrategyControls');
+        
+        if (mode === 'ai_vs_ai') {
+            if (aivsaiControls) aivsaiControls.style.display = 'flex';
+            if (aivsaiInfo) aivsaiInfo.style.display = 'grid';
+            if (aiStrategyControls) aiStrategyControls.style.display = 'block';
+            
+            if (singlePlayerControls) singlePlayerControls.style.display = 'none';
+            if (singlePlayerInfo) singlePlayerInfo.style.display = 'none';
+            
+            // Auto-activate simple AI when switching to AI vs AI mode
+            setTimeout(() => {
+                if (typeof replaceWithSimpleAI === 'function') {
+                    replaceWithSimpleAI();
+                }
+            }, 1000);
+            
+        } else {
+            if (singlePlayerControls) singlePlayerControls.style.display = 'flex';
+            if (singlePlayerInfo) singlePlayerInfo.style.display = 'grid';
+            
+            if (aivsaiControls) aivsaiControls.style.display = 'none';
+            if (aivsaiInfo) aivsaiInfo.style.display = 'none';
+            if (aiStrategyControls) aiStrategyControls.style.display = 'none';
+        }
+    }
+
+    // Emergency Reset
+    window.emergencyGameReset = function() {
+        console.log('🚨 EMERGENCY GAME RESET');
+        
+        if (window.aivsaiObserverInstance) {
+            try {
+                if (window.aivsaiObserverInstance.aiController) {
+                    window.aivsaiObserverInstance.aiController.stopGame('Emergency reset');
+                }
+                window.aivsaiObserverInstance = null;
+            } catch (error) {
+                console.error('Error during emergency reset:', error);
+            }
+        }
+        
+        // Clear board
+        const boardElement = document.getElementById('gameBoard');
+        if (boardElement) {
+            const cells = boardElement.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.classList.remove('x', 'o', 'last-move');
+                const moveText = cell.querySelector('.move-text');
+                if (moveText) moveText.remove();
+            });
+        }
+        
+        console.log('✅ Emergency reset complete');
+        alert('Emergency reset performed. You can now start a new game.');
+    };
+
+    // ========================================================================
+    // INITIALIZATION
+    // ========================================================================
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🎮 Initializing Game Interface...');
+        
+        // Setup game mode switching
+        const gameModeSelect = document.getElementById('gameMode');
+        if (gameModeSelect) {
+            gameModeSelect.addEventListener('change', function() {
+                switchGameMode(this.value);
+            });
+            switchGameMode(gameModeSelect.value);
+        }
+        
+        // Initialize single player observer
+        setTimeout(() => {
+            try {
+                gameObserver = new ChainTestObserver();
+                console.log('✅ Single Player Observer ready!');
+            } catch (error) {
+                console.error('❌ Failed to initialize Single Player Observer:', error);
+            }
+        }, 500);
+        
+        // Wait for simple AI to load, then auto-activate if in AI vs AI mode
+        setTimeout(() => {
+            if (window.SIMPLE_AI_LOADED && gameModeSelect && gameModeSelect.value === 'ai_vs_ai') {
+                console.log('🔄 Auto-activating Simple AI vs AI...');
+                if (typeof replaceWithSimpleAI === 'function') {
+                    replaceWithSimpleAI();
+                }
+            }
+        }, 2000);
+        
+        console.log('🎮 Game Interface initialization complete');
+        console.log('💡 Emergency reset: emergencyGameReset()');
+        console.log('💡 Reload Simple AI: reloadSimpleAI()');
+    });
+</script>
+</body>
+</html>

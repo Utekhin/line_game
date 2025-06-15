@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Line Game - Complete Edition</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #e8f4f8 0%, #f0f8ff 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #2c3e50;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #34495e;
+            margin-bottom: 8px;
+            font-size: 2.2em;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 25px;
+            font-style: italic;
+            font-size: 1.1em;
+        }
+
+        .feature-banner {
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .feature-banner h3 {
+            margin: 0 0 8px 0;
+            font-size: 1.2em;
+        }
+
+        .feature-banner p {
+            margin: 0;
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .game-setup {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .setup-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .setup-section h3 {
+            margin: 0 0 8px 0;
+            color: #495057;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-group label {
+            min-width: 80px;
+            font-weight: 500;
+            color: #6c757d;
+        }
+
+        .current-player {
+            font-size: 1.1em;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: white;
+            transition: all 0.3s ease;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .player-x {
+            background: linear-gradient(45deg, #6c7b7f, #5a6c70);
+        }
+
+        .player-o {
+            background: linear-gradient(45deg, #708b75, #5d7a63);
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #6c757d, #5a6268);
+            color: white;
+            font-size: 0.9em;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.primary {
+            background: linear-gradient(45deg, #495057, #343a40);
+            padding: 10px 20px;
+            font-size: 1em;
+        }
+
+        button.record-btn {
+            background: linear-gradient(45deg, #ff4444, #cc0000);
+            color: white;
+        }
+
+        button.export-btn {
+            background: linear-gradient(45deg, #28a745, #1e7e34);
+            color: white;
+        }
+
+        /* FIXED: Surrender button styling */
+        button.surrender-btn {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+            color: white;
+            padding: 8px 20px;
+            font-weight: 600;
+            border-radius: 20px;
+        }
+
+        button.surrender-btn:hover:not(:disabled) {
+            background: linear-gradient(45deg, #c82333, #bd2130);
+        }
+
+        select, input {
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 0.9em;
+            background: white;
+        }
+
+        input {
+            flex: 1;
+        }
+
+        .game-board {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .board-container {
+            border: 2px solid #495057;
+            border-radius: 8px;
+            background: #f8f9fa;
+            padding: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .board-grid {
+            display: grid;
+            gap: 1px;
+            background: #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: 28px;
+            height: 28px;
+            background: white;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            position: relative;
+            box-sizing: border-box;
+            flex-direction: column;
+        }
+
+        .cell-number {
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            font-size: 7px;
+            color: #6c757d;
+            font-weight: normal;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .move-text {
+            font-size: 9px;
+            font-weight: bold;
+            line-height: 1;
+            text-align: center;
+        }
+
+        .cell.x .cell-number,
+        .cell.o .cell-number {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: bold;
+            text-shadow: 0 0 2px rgba(0,0,0,0.7);
+        }
+
+        .cell:hover:empty {
+            background: #f1f3f4;
+            transform: scale(1.05);
+        }
+
+        .cell.x {
+            background: linear-gradient(45deg, #e8eaed, #d3d6da);
+            color: #6c7b7f;
+            border-color: #6c7b7f;
+        }
+
+        .cell.o {
+            background: linear-gradient(45deg, #e8f2ea, #d4e6d7);
+            color: #708b75;
+            border-color: #708b75;
+        }
+
+        .cell.winning-path {
+            background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+            animation: pulse 1s infinite;
+            box-shadow: 0 0 8px rgba(255, 193, 7, 0.5);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        @keyframes dash {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: 10; }
+        }
+        
+        .diagonal-line {
+            pointer-events: none;
+        }
+        
+        .diagonal-line-x {
+            stroke: #6c7b7f !important;
+        }
+        
+        .diagonal-line-o {
+            stroke: #708b75 !important;
+        }
+        
+        .diagonal-main-diagonal {
+            stroke-dasharray: 3,2;
+        }
+        
+        .diagonal-anti-diagonal {
+            stroke-dasharray: 4,1;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 1em;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(248, 249, 250, 0.8);
+            border: 1px solid #e9ecef;
+        }
+
+        .winner {
+            background: linear-gradient(45deg, #d4edda, #c3e6cb);
+            color: #155724;
+            font-weight: 600;
+            border-color: #c3e6cb;
+        }
+
+        .objective {
+            background: rgba(108, 117, 125, 0.08);
+            border-left: 4px solid #6c757d;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .objective h3 {
+            margin: 0 0 8px 0;
+            color: #495057;
+            font-size: 1.1em;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 15px;
+            background: rgba(248, 249, 250, 0.8);
+            border: 1px solid #e9ecef;
+        }
+
+        .legend-symbol {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .x-symbol { color: #6c7b7f; }
+        .o-symbol { color: #708b75; }
+
+        .export-status {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 5px;
+            padding: 5px 8px;
+            background: rgba(248, 249, 250, 0.8);
+            border-radius: 4px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .status-indicator.connected {
+            background: #28a745;
+            animation: pulse-green 2s infinite;
+        }
+
+        .status-indicator.connecting {
+            background: #ffc107;
+            animation: pulse-yellow 1s infinite;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        @keyframes pulse-yellow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .game-id {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .invite-link {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .invite-link input {
+            font-size: 0.8em;
+            background: #f8f9fa;
+        }
+
+        .invite-link button {
+            padding: 4px 8px;
+            font-size: 0.8em;
+        }
+        
+        .join-game-banner {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+    animation: pulse-green 2s infinite;
+}
+
+.join-game-banner h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.3em;
+}
+
+.join-game-input {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.join-game-input input {
+    padding: 10px 15px;
+    border: 2px solid white;
+    border-radius: 25px;
+    font-size: 1em;
+    min-width: 200px;
+    text-align: center;
+}
+
+.join-game-input button {
+    padding: 10px 20px;
+    background: white;
+    color: #28a745;
+    border: none;
+    border-radius: 25px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.hidden { display: none !important; }
+
+@keyframes pulse-green {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+
+        .modal button {
+            margin: 5px;
+            padding: 10px 20px;
+        }
+
+        @media (max-width: 768px) {
+            .game-setup {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .cell {
+                width: 24px;
+                height: 24px;
+                font-size: 8px;
+            }
+            
+            .cell-number {
+                font-size: 6px;
+            }
+            
+            .move-text {
+                font-size: 7px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .game-setup {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="font-size: 0.8em; margin-bottom: 15px;">Connection Line Game</h1>
+   
+         <!-- Join Game Banner (hidden by default) -->
+<div id="joinGameBanner" class="join-game-banner hidden">
+    <h3>🎮 Join Multiplayer Game</h3>
+    <p>Connected to game: <strong id="joinGameId">---</strong></p>
+    <p>Enter your nickname to start playing!</p>
+    <div class="join-game-input">
+        <input type="text" id="joinGameNickname" placeholder="Enter your nickname" maxlength="20" onkeypress="handleJoinKeyPress(event)">
+        <button onclick="joinGameFromBanner()">🚀 Join Game</button>
+    </div>
+    <div style="margin-top: 10px; font-size: 0.9em; opacity: 0.8;">
+        You'll automatically join when your opponent is ready
+    </div>
+</div>
+        <div class="game-setup">
+            <div class="setup-section">
+                <h3>Game Settings</h3>
+                <div class="control-group">
+                    <label>Board Size:</label>
+                    <select id="boardSize" onchange="createBoard()">
+                        <option value="10">10×10</option>
+                        <option value="15" selected>15×15</option>
+                        <option value="20">20×20</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Game Mode:</label>
+                    <select id="gameMode" onchange="handleGameModeChange()">
+                        <option value="local" selected>Local Play</option>
+                        <option value="online">Online Multiplayer</option>
+                    </select>
+                </div>
+                <button class="primary" onclick="newGame()">New Game</button>
+            </div>
+
+            <div class="setup-section">
+                <h3>🎮 Game Recording</h3>
+                <div class="control-group">
+                    <button id="record-toggle" onclick="toggleGameRecording()" class="record-btn">🔴 Start Recording</button>
+                </div>
+                <div class="control-group">
+                    <button onclick="exportCurrentGame()" class="export-btn">📦 Export Game</button>
+                    <button onclick="showBatchExport()">📊 Batch Export</button>
+                </div>
+                <div class="export-status" id="exportStatus">
+                    📁 Ready to record games
+                </div>
+                <div style="font-size: 0.8em; color: #6c757d; margin-top: 8px; line-height: 1.3;">
+                    💡 Record games to collect training data for neural networks
+                </div>
+            </div>
+
+            <div class="setup-section" id="multiplayerSection">
+                <h3>🌐 Online Multiplayer</h3>
+                <div class="control-group">
+                    <label>Nickname:</label>
+                    <input type="text" id="playerNickname" placeholder="Enter your nickname" maxlength="20">
+                </div>
+                <div class="connection-status">
+                    <div class="status-indicator" id="connectionStatus"></div>
+                    <span id="connectionText">Offline</span>
+                    <button id="connectButton" onclick="toggleConnection()">Connect</button>
+                </div>
+                
+                <div id="onlineControlsSection" style="display: none;">
+                    <button class="primary" onclick="createOnlineGame()" style="margin-bottom: 10px; width: 100%;">Create Game</button>
+                    <div class="game-id">
+                        <div>Game ID: <span id="gameId">Not connected</span></div>
+                        <div class="invite-link">
+                            <input type="text" id="inviteLink" placeholder="Share this link to invite players" readonly>
+                            <button onclick="copyInviteLink()">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="currentPlayer" class="current-player player-x">Player X's Turn</div>
+
+        <!-- FIXED: Surrender Button with proper styling and state management -->
+        <div style="text-align: center; margin-bottom: 15px;">
+            <button id="surrenderButton" onclick="handleSurrender()" class="surrender-btn">
+                🏳️ Surrender
+            </button>
+            <div style="font-size: 0.8em; color: #6c757d; margin-top: 5px;">
+                Click to concede the game
+            </div>
+        </div>
+
+        <div class="game-board">
+            <div class="board-container">
+                <div id="board" class="board-grid">
+                    <!-- Board will be created by JavaScript -->
+                </div>
+                <svg id="diagonal-lines-svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
+                </svg>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <span class="legend-symbol x-symbol">■</span>
+                <span>X connects Top ↔ Bottom</span>
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol o-symbol">■</span>
+                <span>O connects Left ↔ Right</span>
+            </div>
+        </div>
+
+        <div id="status" class="status">Game in progress. X goes first!</div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="exportModal" class="modal">
+        <div class="modal-content">
+            <h2>🎮 Game Recorded Successfully!</h2>
+            <p><strong>Game ID:</strong> <span id="modalGameId">---</span></p>
+            <p><strong>Winner:</strong> <span id="modalWinner">---</span></p>
+            <p><strong>Total Moves:</strong> <span id="modalMoves">---</span></p>
+            <p><strong>Duration:</strong> <span id="modalDuration">---</span></p>
+            <br>
+            <button onclick="exportGameData()" class="export-btn">📦 Export Game Data</button>
+            <button onclick="saveToCollection()">💾 Save to Collection</button>
+            <button onclick="closeExportModal()">❌ Close</button>
+        </div>
+    </div>
+
+    <!-- Batch Export Modal -->
+    <div id="batchModal" class="modal">
+        <div class="modal-content">
+            <h2>📊 Batch Export</h2>
+            <p><strong>Total Games Stored:</strong> <span id="batchGameCount">0</span></p>
+            <p><strong>Total Positions:</strong> <span id="batchPositionCount">0</span></p>
+            <br>
+            <button onclick="exportAllGames()" class="export-btn">📦 Export All Games</button>
+            <button onclick="clearAllGames()">🗑️ Clear All Games</button>
+            <button onclick="closeBatchModal()">❌ Close</button>
+        </div>
+    </div>
+<div class="setup-section">
+    <h3>🎓 Training Mode</h3>
+    <div class="control-group">
+        <button onclick="activateTrainingMode()" class="primary">Activate Training</button>
+        <button onclick="collectTrainingData(50, 'ai_vs_ai')">Collect AI Data</button>
+    </div>
+    <div class="control-group">
+        <label>Games to collect:</label>
+        <input type="number" id="trainingGames" value="50" min="10" max="1000">
+        <select id="collectionMode">
+            <option value="human_vs_ai">Human vs AI</option>
+            <option value="ai_vs_ai">AI vs AI</option>
+            <option value="random_games">Random Games</option>
+        </select>
+    </div>
+    <div id="trainingProgress" class="export-status">
+        Training mode: Inactive
+    </div>
+</div>
+    <script>
+        // ========================= GLOBAL VARIABLES & INITIALIZATION =========================
+        let game = null;
+        let exportManager = null;
+        let multiplayerManager = null;
+        let gameMode = 'local';
+
+        // ========================= SURRENDER BUTTON MANAGEMENT =========================
+        function updateSurrenderButton() {
+            const surrenderButton = document.getElementById('surrenderButton');
+            if (!surrenderButton) return;
+
+            if (window.gameController && window.gameController.isGameActive && !window.gameController.gameCore.gameOver) {
+                surrenderButton.disabled = false;
+                surrenderButton.style.opacity = '1';
+            } else {
+                surrenderButton.disabled = true;
+                surrenderButton.style.opacity = '0.6';
+            }
+        }
+
+        // ========================= GLOBAL FUNCTIONS =========================
+        function newGame() {
+            console.log('Starting new game...');
+            
+            const boardSize = parseInt(document.getElementById('boardSize').value);
+            
+            if (typeof ConnectionGameManager !== 'undefined') {
+                if (!window.gameController) {
+                    window.gameController = new ConnectionGameManager();
+                }
+                window.gameController.setBoardSize(boardSize);
+                window.gameController.setGameMode(gameMode);
+                window.gameController.newGame();
+                
+                // Update surrender button state
+                updateSurrenderButton();
+                
+                console.log(`✅ New ${boardSize}x${boardSize} game started (${gameMode} mode)`);
+            } else {
+                console.error('❌ ConnectionGameManager not found - make sure main.js is loaded');
+            }
+        }
+
+        function createBoard() {
+            if (window.gameController) {
+                const newSize = parseInt(document.getElementById('boardSize').value);
+                window.gameController.setBoardSize(newSize);
+                window.gameController.createBoard();
+                console.log(`Board resized to ${newSize}x${newSize}`);
+            }
+        }
+
+        function handleGameModeChange() {
+            const newMode = document.getElementById('gameMode').value;
+            gameMode = newMode;
+            
+            if (window.gameController) {
+                window.gameController.setGameMode(newMode);
+                console.log(`Game mode changed to: ${newMode}`);
+            }
+        }
+
+        function handleSurrender() {
+            console.log('Surrender button clicked');
+            
+            if (!window.gameController) {
+                console.error('Game controller not available');
+                return;
+            }
+            
+            // Confirm surrender
+            const currentPlayer = window.gameController.gameCore.currentPlayer;
+            const confirmMessage = `Are you sure you want to surrender as Player ${currentPlayer}?`;
+            
+            if (confirm(confirmMessage)) {
+                window.gameController.handleSurrender();
+                updateSurrenderButton(); // Update button state after surrender
+            }
+        }
+
+        // ========================= EXPORT FUNCTIONS =========================
+        function toggleGameRecording() {
+            if (window.gameController && window.gameController.exportManager) {
+                const isRecording = window.gameController.exportManager.toggleRecording();
+                const button = document.getElementById('record-toggle');
+                
+                if (isRecording) {
+                    button.textContent = '⏹️ Stop Recording';
+                    button.style.background = 'linear-gradient(45deg, #28a745, #1e7e34)';
+                } else {
+                    button.textContent = '🔴 Start Recording';
+                    button.style.background = 'linear-gradient(45deg, #ff4444, #cc0000)';
+                }
+                
+                console.log(`Recording ${isRecording ? 'started' : 'stopped'}`);
+            }
+        }
+
+        function exportCurrentGame() {
+            if (window.gameController && window.gameController.exportManager) {
+                window.gameController.exportManager.exportCurrentGame();
+            } else {
+                alert('No export manager available or no game to export');
+            }
+        }
+
+        function showBatchExport() {
+            const modal = document.getElementById('batchModal');
+            modal.style.display = 'flex';
+            
+            if (window.gameController && window.gameController.exportManager) {
+                const gameCount = window.gameController.exportManager.storedGames ? window.gameController.exportManager.storedGames.length : 0;
+                const positionCount = window.gameController.exportManager.storedGames ? 
+                    window.gameController.exportManager.storedGames.reduce((sum, g) => sum + g.moves.length, 0) : 0;
+                
+                document.getElementById('batchGameCount').textContent = gameCount;
+                document.getElementById('batchPositionCount').textContent = positionCount;
+            }
+        }
+
+        function exportAllGames() {
+            if (window.gameController && window.gameController.exportManager) {
+                window.gameController.exportManager.exportAllGames();
+            }
+        }
+
+        function clearAllGames() {
+            if (confirm('Are you sure you want to clear all stored games?')) {
+                if (window.gameController && window.gameController.exportManager) {
+                    window.gameController.exportManager.clearAllGames();
+                    document.getElementById('batchGameCount').textContent = '0';
+                    document.getElementById('batchPositionCount').textContent = '0';
+                }
+            }
+        }
+
+        function closeExportModal() {
+            document.getElementById('exportModal').style.display = 'none';
+        }
+
+        function closeBatchModal() {
+            document.getElementById('batchModal').style.display = 'none';
+        }
+
+        function exportGameData() {
+            if (window.gameController && window.gameController.exportManager) {
+                window.gameController.exportManager.exportCurrentGame();
+                closeExportModal();
+            } else {
+                alert('Export manager not available');
+            }
+        }
+
+        function saveToCollection() {
+            if (window.gameController && window.gameController.exportManager) {
+                window.gameController.exportManager.saveCurrentGame();
+                closeExportModal();
+                alert('Game saved to collection!');
+            } else {
+                alert('Export manager not available');
+            }
+        }
+
+        // ========================= MULTIPLAYER FUNCTIONS =========================
+        function toggleConnection() {
+            const nickname = document.getElementById('playerNickname').value.trim();
+            
+            if (!window.gameController || !window.gameController.multiplayerManager) {
+                alert('Multiplayer not available - make sure game is initialized');
+                return;
+            }
+            
+            if (!window.gameController.multiplayerManager.isConnected) {
+                if (!nickname) {
+                    alert('Please enter a nickname first');
+                    document.getElementById('playerNickname').focus();
+                    return;
+                }
+                window.gameController.multiplayerManager.connect(nickname);
+            } else {
+                window.gameController.multiplayerManager.disconnect();
+            }
+        }
+
+        function createOnlineGame() {
+            if (window.gameController && window.gameController.multiplayerManager && window.gameController.multiplayerManager.isConnected) {
+                window.gameController.multiplayerManager.createGame();
+            }
+        }
+
+        function copyInviteLink() {
+            const inviteLink = document.getElementById('inviteLink');
+            if (inviteLink && inviteLink.value) {
+                navigator.clipboard.writeText(inviteLink.value).then(() => {
+                    const originalPlaceholder = inviteLink.placeholder;
+                    inviteLink.placeholder = 'Copied!';
+                    setTimeout(() => {
+                        inviteLink.placeholder = originalPlaceholder;
+                    }, 2000);
+                });
+            }
+        }
+
+        // ========================= INITIALIZATION =========================
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎮 Initializing Complete Connection Game...');
+            
+            // Wait a moment for all scripts to load, then initialize
+            setTimeout(() => {
+                try {
+                    window.gameController = new ConnectionGameManager();
+                    newGame(); // Start first game
+                    console.log('✅ Connection Game initialized successfully!');
+                    console.log('🎯 Features: Game logic + Diagonal lines + Export + Multiplayer + AI');
+                    console.log('💡 Ready to record games for neural network training!');
+                } catch (error) {
+                    console.error('❌ Failed to initialize game:', error);
+                }
+            }, 100);
+        });
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const exportModal = document.getElementById('exportModal');
+            const batchModal = document.getElementById('batchModal');
+            
+            if (event.target === exportModal) {
+                exportModal.style.display = 'none';
+            }
+            if (event.target === batchModal) {
+                batchModal.style.display = 'none';
+            }
+        }
+
+        // FIXED: Add game state monitoring for surrender button
+        setInterval(() => {
+            updateSurrenderButton();
+        }, 1000); // Check every second
+    </script>
+
+    <!-- Core game logic (pure game mechanics) -->
+    <script src="js/game-core.js"></script>
+    
+    <!-- Game export functionality for neural network training -->
+    <script src="js/game-export.js"></script>
+    
+    <!-- AI strategy module -->
+    <script src="js/game-ai-enhanced.js"></script>
+    
+    <!-- Online multiplayer functionality -->
+    <script src="js/game-multiplayer.js"></script>
+    
+    <!-- Diagonal lines visualization module -->
+    <script src="js/game-diagonal-lines.js"></script>
+    
+    <!-- Main controller that coordinates everything -->
+    <script src="js/main.js"></script>
+
+</body>
+</html>
