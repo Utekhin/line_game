@@ -1,26 +1,42 @@
-// simple-chain.js - UPDATED: Fragment-Aware AI with Early Fragment Detection
-// KEEPS: Same filename and class name for compatibility
-// ADDS: Fragment awareness, X1 isolation fix, early fragment detection
+// simple-chain.js - FIXED VERSION
+// Resolves "heads is not iterable" error + adds threat follow-through
+// Properly handles ChainHeadManager API: getHeads() returns object, getActiveHeads() returns array
 
 class SimpleChainAI {
     constructor(gameCore, player, personalityConfig = null) {
         this.gameCore = gameCore;
         this.player = player;
+        this.opponent = player === 'X' ? 'O' : 'X';
         this.direction = player === 'X' ? 'vertical' : 'horizontal';
         
-        // UPDATED: Use the enhanced ChainHeadManager (same name, new functionality)
-        this.chainHeadManager = new ChainHeadManager(gameCore, player);
+        // Chain head management - safe initialization
+        try {
+            if (typeof ChainHeadManager !== 'undefined') {
+                this.chainHeadManager = new ChainHeadManager(gameCore, player);
+            } else {
+                console.warn('ChainHeadManager not available');
+                this.chainHeadManager = null;
+            }
+        } catch (error) {
+            console.warn(`Failed to initialize ChainHeadManager: ${error.message}`);
+            this.chainHeadManager = null;
+        }
         
         // Personality System Integration
         this.initializePersonality(personalityConfig);
         
-        // Gap registry connection (single source of truth)
-        this.gapRegistry = null; // Will be set by controller
+        // Gap registry connection
+        this.gapRegistry = null;
         
         // Move tracking
         this.moveCount = 0;
         this.lastMoveType = null;
         this.debugMode = true;
+        
+        // THREAT FOLLOW-THROUGH SYSTEM
+        this.threatMemory = new Map();
+        this.lastThreatMade = null;
+        this.recentOpponentMoves = [];
         
         // L-pattern definitions (strategic order for chain extension)
         this.strategicLPatterns = [
@@ -30,26 +46,19 @@ class SimpleChainAI {
             [1, 2], [1, -2], [-1, 2], [-1, -2]
         ];
         
-        this.log(`🤖 ${this.personalityName || 'Default'} Fragment-Aware AI initialized for ${player}`);
+        this.log(`🤖 SimpleChainAI initialized for ${player}`);
     }
 
-    // Personality initialization (unchanged)
+    // Personality initialization
     initializePersonality(personalityConfig) {
         if (personalityConfig) {
             this.personality = personalityConfig;
             this.personalityName = personalityConfig.name;
             this.personalityId = personalityConfig.id || 'custom';
         } else {
-            const defaultPersonalities = window.AI_PERSONALITIES;
-            if (defaultPersonalities && defaultPersonalities['defensive_builder']) {
-                this.personality = defaultPersonalities['defensive_builder'];
-                this.personalityName = 'Defensive Builder';
-                this.personalityId = 'defensive_builder';
-            } else {
-                this.personality = this.createMinimalPersonality();
-                this.personalityName = 'Default';
-                this.personalityId = 'default';
-            }
+            this.personality = this.createMinimalPersonality();
+            this.personalityName = 'Default';
+            this.personalityId = 'default';
         }
         
         this.priorities = { ...this.personality.priorities };
@@ -57,7 +66,7 @@ class SimpleChainAI {
         this.strategy = { ...this.personality.strategy };
         this.startingArea = { ...this.personality.startingArea };
         
-        this.log(`🎭 Personality loaded: ${this.personalityName}`);
+        this.log(`🎭 Personality: ${this.personalityName}`);
     }
 
     createMinimalPersonality() {
@@ -82,175 +91,325 @@ class SimpleChainAI {
         };
     }
 
-    // Connect gap registry (called by controller)
     setGapRegistry(gapRegistry) {
         this.gapRegistry = gapRegistry;
-        this.log(`🔗 Gap Registry connected to ${this.personalityName} AI`);
+        this.log(`🔗 Gap Registry connected`);
     }
 
     reset() {
         this.moveCount = 0;
         this.lastMoveType = null;
-        this.chainHeadManager = new ChainHeadManager(this.gameCore, this.player);
-        this.gapRegistry = null;
         
-        this.log(`🔄 ${this.personalityName} AI reset for ${this.player}`);
-    }
-
-    // ===== MAIN ENTRY POINT: ENHANCED 6-Step Decision System with Fragment Support =====
-    getNextMove() {
-        this.moveCount++;
-        this.log(`\n=== MOVE ${this.moveCount} (${this.personalityName}) ===`);
-        
-        // CRITICAL: Update fragment analysis first (this is the key fix!)
-        this.chainHeadManager.updateHeads();
-        
-        // Notify gap registry of move start
-        if (this.gapRegistry && this.gapRegistry.onBoardChanged) {
-            this.gapRegistry.onBoardChanged();
+        try {
+            if (typeof ChainHeadManager !== 'undefined') {
+                this.chainHeadManager = new ChainHeadManager(this.gameCore, this.player);
+            }
+        } catch (error) {
+            this.chainHeadManager = null;
         }
         
-        // STEP 1: Handle gap threats FIRST (highest priority)
+        this.gapRegistry = null;
+        this.threatMemory.clear();
+        this.lastThreatMade = null;
+        this.recentOpponentMoves = [];
+        
+        this.log(`🔄 AI reset`);
+    }
+
+    // ===== MAIN ENTRY POINT =====
+    getNextMove() {
+        this.moveCount++;
+        this.log(`\n=== MOVE ${this.moveCount} ===`);
+        
+        // Clean up old threats
+        this.cleanupOldThreats();
+        
+        // Update chain heads if available
+        if (this.chainHeadManager && typeof this.chainHeadManager.updateHeads === 'function') {
+            try {
+                this.chainHeadManager.updateHeads();
+            } catch (error) {
+                this.log(`⚠️ Chain head update failed: ${error.message}`);
+            }
+        }
+        
+        // Notify gap registry
+        if (this.gapRegistry && typeof this.gapRegistry.onBoardChanged === 'function') {
+            try {
+                this.gapRegistry.onBoardChanged();
+            } catch (error) {
+                this.log(`⚠️ Gap registry notification failed: ${error.message}`);
+            }
+        }
+        
+        // STEP 1: Handle threats (defense + follow-through)
         const gapMove = this.handleGapThreats();
         if (gapMove) {
-            this.log(`🚨 GAP THREAT MOVE: ${gapMove.reason}`);
-            this.logMoveDecision(gapMove, 'gap-threat');
+            this.logMoveDecision(gapMove, 'threat-handling');
             return gapMove;
         }
 
-        // STEP 2: NEW - Early Fragment Connection (from move 5, not 20!)
+        // STEP 2: Fragment connection
         if (this.moveCount >= 5) {
             const fragmentMove = this.checkFragmentConnection();
             if (fragmentMove) {
-                this.lastMoveType = 'fragment-connection';
-                this.log(`🔗 FRAGMENT CONNECTION: ${fragmentMove.reason}`);
                 this.logMoveDecision(fragmentMove, 'fragment-connection');
                 return fragmentMove;
             }
         }
 
-        // STEP 3: Aggressive opponent attack with personality
+        // STEP 3: Attack opponent
         const attackMove = this.getPersonalityDrivenAttackMove();
         if (attackMove) {
-            this.lastMoveType = attackMove.pattern;
-            this.log(`⚔️ PERSONALITY ATTACK: ${attackMove.reason}`);
-            this.logMoveDecision(attackMove, 'personality-attack');
+            this.logMoveDecision(attackMove, 'attack');
             return attackMove;
         }
 
-        // STEP 4: Border connection check (enhanced with personality)
+        // STEP 4: Border connection - FIXED
         const borderMove = this.checkPersonalityDrivenBorderConnection();
         if (borderMove) {
-            this.lastMoveType = 'border-connection';
-            this.log(`🎯 BORDER MOVE: ${borderMove.reason}`);
             this.logMoveDecision(borderMove, 'border-connection');
             return borderMove;
         }
 
-        // STEP 5: Fragment-aware chain extension 
+        // STEP 5: Chain extension - FIXED
         const chainMove = this.getFragmentAwareChainExtension();
         if (chainMove) {
-            this.lastMoveType = 'chain-extension';
-            this.log(`🔗 FRAGMENT-AWARE CHAIN EXTENSION: ${chainMove.reason}`);
             this.logMoveDecision(chainMove, 'chain-extension');
             return chainMove;
         }
 
-        // STEP 6: Fill remaining safe gaps with personality
+        // STEP 6: Fill safe gaps
         const safeGapMove = this.fillPersonalityDrivenSafeGaps();
         if (safeGapMove) {
-            this.log(`🔧 SAFE GAP MOVE: ${safeGapMove.reason}`);
             this.logMoveDecision(safeGapMove, 'safe-gap');
             return safeGapMove;
         }
 
-        this.log('⚠️ NO VALID MOVES FOUND');
+        this.log('⚠️ No valid moves found');
         return null;
     }
 
-    // ===== STEP 1: Gap Threat Handling (unchanged) =====
+    // ===== STEP 1: ENHANCED Threat Handling with Follow-Through =====
     handleGapThreats() {
         if (!this.gapRegistry) {
-            this.log('⚠️ No gap registry available for threat detection');
             return null;
         }
 
-        this.log('🔍 Checking gap threats via Gap Registry...');
+        this.log('🔍 Checking threats...');
 
-        const threatenedGaps = this.gapRegistry.getOwnThreatenedGaps();
-        
-        if (threatenedGaps.length > 0) {
-            const urgentThreat = threatenedGaps[0];
-            this.lastMoveType = 'threatened-gap';
+        // DEFENSE: Check our own threatened gaps first
+        try {
+            const threatenedGaps = this.gapRegistry.getOwnThreatenedGaps ? 
+                this.gapRegistry.getOwnThreatenedGaps(this.player) : [];
             
-            this.log(`🚨 THREATENED GAP FOUND: ${urgentThreat.patternType} at (${urgentThreat.row},${urgentThreat.col})`);
-            
-            return {
-                row: urgentThreat.row,
-                col: urgentThreat.col,
-                value: urgentThreat.priority,
-                reason: `${this.personalityName}: ${urgentThreat.reason}`,
-                pattern: 'threatened-gap'
-            };
+            if (Array.isArray(threatenedGaps) && threatenedGaps.length > 0) {
+                const threat = threatenedGaps[0];
+                this.log(`🚨 Defending threat at (${threat.row},${threat.col})`);
+                
+                return {
+                    row: threat.row,
+                    col: threat.col,
+                    value: threat.priority || 9000,
+                    reason: 'Defend threatened gap',
+                    pattern: 'defense'
+                };
+            }
+        } catch (error) {
+            this.log(`⚠️ Threat check failed: ${error.message}`);
         }
 
-        this.log('✅ No gap threats found');
+        // ATTACK FOLLOW-THROUGH: Complete pending attacks
+        const followThrough = this.checkPendingAttackCompletion();
+        if (followThrough) {
+            return followThrough;
+        }
+
         return null;
     }
 
-    // ===== STEP 2: ENHANCED Fragment Connection with Early Detection =====
+    // NEW: Check and complete pending attacks (CORE FEATURE)
+    checkPendingAttackCompletion() {
+        // If we made a threat 2 moves ago, check if opponent responded
+        if (this.lastThreatMade && 
+            this.moveCount - this.lastThreatMade.moveNumber === 2) {
+            
+            const threat = this.lastThreatMade;
+            
+            // Check if opponent filled any of the gap cells
+            const opponentResponded = this.checkIfOpponentRespondedToThreat(threat);
+            
+            if (!opponentResponded) {
+                // COMPLETE THE CUT! Fill all remaining gap cells
+                const cutMove = this.completeThreatCut(threat);
+                if (cutMove) {
+                    this.log(`⚔️ COMPLETING ATTACK: Cutting opponent's chain at (${cutMove.row},${cutMove.col})`);
+                    this.lastThreatMade = null; // Clear threat after completion
+                    return cutMove;
+                }
+            } else {
+                this.log(`ℹ️ Opponent defended threat at (${threat.targetRow},${threat.targetCol})`);
+                this.lastThreatMade = null; // Clear defended threat
+            }
+        }
+        
+        return null;
+    }
+
+    // NEW: Complete threat by filling remaining gap cells
+    completeThreatCut(threat) {
+        const gapCells = threat.gapCells || [];
+        
+        // Find an unfilled gap cell (not the one we already threatened)
+        for (const cell of gapCells) {
+            // Skip the cell we already threatened
+            if (cell.row === threat.targetRow && cell.col === threat.targetCol) {
+                continue;
+            }
+            
+            // Check if this cell is still empty
+            if (this.isValidMove(cell.row, cell.col)) {
+                return {
+                    row: cell.row,
+                    col: cell.col,
+                    value: 8500,
+                    reason: `⚔️ COMPLETE CUT: Severing ${threat.patternType} chain`,
+                    pattern: 'attack-completion',
+                    completingThreat: true
+                };
+            }
+        }
+        
+        return null;
+    }
+
+    // NEW: Check if opponent responded to our threat
+    checkIfOpponentRespondedToThreat(threat) {
+        // Check if opponent filled any of the gap cells
+        for (const cell of threat.gapCells || []) {
+            const currentPiece = this.gameCore.board[cell.row][cell.col];
+            if (currentPiece === this.opponent) {
+                return true; // Opponent responded
+            }
+        }
+        return false; // Opponent ignored the threat
+    }
+
+    // ===== STEP 2: Fragment Connection =====
     checkFragmentConnection() {
-        this.log('🔗 Checking fragment connection...');
-        
-        const fragmentStats = this.chainHeadManager.getStats();
-        
-        // If we only have one fragment, no connection needed
-        if (fragmentStats.fragmentCount <= 1) {
-            this.log('✅ Single fragment - no connection needed');
+        if (!this.chainHeadManager || !this.chainHeadManager.getStats) {
             return null;
         }
         
-        this.log(`📊 Found ${fragmentStats.fragmentCount} fragments - seeking connection`);
-        
-        // Try to get the best connection move using the enhanced chain head manager
-        const connectionMove = this.chainHeadManager.getBestFragmentConnectionMove();
-        
-        if (connectionMove) {
-            this.log(`🎯 Fragment connection found: (${connectionMove.row},${connectionMove.col})`);
-            return connectionMove;
+        try {
+            const stats = this.chainHeadManager.getStats();
+            if (stats.fragmentCount <= 1) {
+                return null;
+            }
+            
+            if (this.chainHeadManager.findBestFragmentConnection) {
+                const move = this.chainHeadManager.findBestFragmentConnection();
+                if (move) {
+                    return {
+                        row: move.row,
+                        col: move.col,
+                        value: 6500,
+                        reason: 'Connect fragments',
+                        pattern: 'fragment-connection'
+                    };
+                }
+            }
+        } catch (error) {
+            this.log(`⚠️ Fragment connection failed: ${error.message}`);
         }
         
-        // If no direct connection possible, develop the best fragment
-        this.log(`🔄 No direct fragment connection available - continuing with active fragment development`);
         return null;
     }
 
-    // ===== STEP 3: Attack moves (unchanged) =====
+    // ===== STEP 3: ENHANCED Attack Move with Threat Recording =====
     getPersonalityDrivenAttackMove() {
         if (!this.gapRegistry) {
-            this.log('⚠️ No gap registry available for attack detection');
             return null;
         }
-
-        this.log(`⚔️ ${this.personalityName} checking attack opportunities...`);
-
-        const attackableGaps = this.gapRegistry.getOpponentVulnerableGaps();
         
-        if (attackableGaps.length > 0) {
-            const bestAttack = attackableGaps[0];
+        const attackThreshold = this.strategy.attackThreshold || 5000;
+        
+        if (Math.random() < (this.priorities.standardAttack || 0.3)) {
+            try {
+                const opponentGaps = this.gapRegistry.getOpponentVulnerableGaps ? 
+                    this.gapRegistry.getOpponentVulnerableGaps(this.opponent) : [];
+                
+                if (Array.isArray(opponentGaps) && opponentGaps.length > 0) {
+                    const gap = opponentGaps[0];
+                    
+                    // RECORD THREAT for follow-through
+                    this.recordThreatMade(gap);
+                    
+                    return {
+                        row: gap.row,
+                        col: gap.col,
+                        value: attackThreshold + (gap.priority || 0),
+                        reason: 'Threaten opponent gap',
+                        pattern: 'attack'
+                    };
+                }
+            } catch (error) {
+                this.log(`⚠️ Attack move failed: ${error.message}`);
+            }
+        }
+        
+        return null;
+    }
+
+    // NEW: Record threats for follow-through tracking
+    recordThreatMade(gap) {
+        const gapCells = this.getGapCells(gap);
+        
+        this.lastThreatMade = {
+            moveNumber: this.moveCount,
+            targetRow: gap.row,
+            targetCol: gap.col,
+            patternType: gap.patternType || 'pattern',
+            gapCells: gapCells,
+            gapKey: `${gap.row},${gap.col}`
+        };
+        
+        this.threatMemory.set(this.lastThreatMade.gapKey, this.lastThreatMade);
+        this.log(`📝 Threat recorded at (${gap.row},${gap.col}) - ${gap.patternType}`);
+    }
+
+    // NEW: Get all cells that can fill a gap
+    getGapCells(gap) {
+        if (gap.fillCells && Array.isArray(gap.fillCells)) {
+            return gap.fillCells;
+        }
+        
+        // For L-patterns, typically 2 cells can fill the gap
+        // For I-patterns, typically 3 cells can fill the gap
+        // Simple fallback: return the gap position itself
+        return [{ row: gap.row, col: gap.col }];
+    }
+
+    // ===== STEP 4: FIXED Border Connection =====
+    checkPersonalityDrivenBorderConnection() {
+        this.log('🎯 Checking border connections...');
+        
+        // FIXED: Get heads as ARRAY, not object
+        let headsArray = this.getHeadsAsArray();
+        
+        if (headsArray.length === 0) {
+            return null;
+        }
+        
+        for (const head of headsArray) {
+            const borderDistance = this.player === 'X' ? 
+                Math.min(head.row, 14 - head.row) : 
+                Math.min(head.col, 14 - head.col);
             
-            const criticalThreshold = 6000 * this.priorities.criticalAttack;
-            const standardThreshold = 4000 * this.priorities.standardAttack;
-            const opportunisticThreshold = this.strategy.attackThreshold * this.priorities.opportunisticAttack;
-            
-            if (bestAttack.priority >= criticalThreshold) {
-                return this.createPersonalizedAttackMove(bestAttack, 'critical-attack');
-            } else if (bestAttack.priority >= standardThreshold) {
-                return this.createPersonalizedAttackMove(bestAttack, 'standard-attack');
-            } else if (bestAttack.priority >= opportunisticThreshold) {
-                const independenceCheck = Math.random();
-                if (independenceCheck >= this.strategy.independentPlaying) {
-                    return this.createPersonalizedAttackMove(bestAttack, 'opportunistic-attack');
+            if (borderDistance <= 2) {
+                const move = this.generateBorderConnectionMove(head);
+                if (move) {
+                    return move;
                 }
             }
         }
@@ -258,70 +417,200 @@ class SimpleChainAI {
         return null;
     }
 
-    createPersonalizedAttackMove(attack, moveType) {
-        const personalityMultiplier = this.priorities[moveType.replace('-', '')] || 1.0;
-        const finalPriority = attack.priority * personalityMultiplier;
+    // ===== STEP 5: FIXED Chain Extension =====
+    getFragmentAwareChainExtension() {
+        this.log('🔗 Chain extension...');
         
-        return {
-            row: attack.row,
-            col: attack.col,
-            value: finalPriority,
-            reason: `${this.personalityName}: ${attack.reason} (×${personalityMultiplier.toFixed(1)})`,
-            pattern: moveType
-        };
-    }
-
-    // ===== STEP 4: Enhanced Border Connection =====
-    checkPersonalityDrivenBorderConnection() {
-        const ourPieces = this.gameCore.getPlayerPositions(this.player);
+        // FIXED: Get heads as ARRAY, not object
+        let headsArray = this.getHeadsAsArray();
         
-        this.log(`🎯 ${this.personalityName} checking border I-patterns for ${ourPieces.length} pieces...`);
+        // If no heads, try initial move
+        if (headsArray.length === 0) {
+            return this.generateInitialMove();
+        }
         
-        if (this.player === 'X') {
-            // Apply personality randomization to border connection eagerness
-            const borderEagerness = this.priorities.borderConnection;
-            if (Math.random() > borderEagerness && this.moveCount < 10) {
-                this.log(`🎭 ${this.personalityName}: Delaying border connection (personality preference)`);
-                return null;
+        const selectedHead = this.selectHeadWithPersonality(headsArray);
+        
+        if (selectedHead) {
+            const move = this.generateLPatternFromHead(selectedHead);
+            if (move) {
+                return move;
             }
-            
-            // Check both top and bottom border connections
-            const topBorderMove = this.checkBorderConnection(ourPieces, 'top');
-            if (topBorderMove) return topBorderMove;
-            
-            const bottomBorderMove = this.checkBorderConnection(ourPieces, 'bottom');
-            if (bottomBorderMove) return bottomBorderMove;
         }
         
         return null;
     }
 
-    checkBorderConnection(ourPieces, borderType) {
-        const targetRow = borderType === 'top' ? 1 : (this.gameCore.size - 2);
-        const pieces = ourPieces.filter(p => p.row === targetRow);
+    // CRITICAL FIX: Convert ChainHeadManager results to arrays
+    getHeadsAsArray() {
+        let headsArray = [];
         
-        for (const piece of pieces) {
-            if (this.hasBorderConnectionForPiece(piece, borderType)) {
-                continue; // Already connected
+        if (this.chainHeadManager) {
+            try {
+                // Method 1: Try getActiveHeads() - returns array
+                if (typeof this.chainHeadManager.getActiveHeads === 'function') {
+                    const result = this.chainHeadManager.getActiveHeads();
+                    if (Array.isArray(result)) {
+                        headsArray = result;
+                        this.log(`✅ Got ${headsArray.length} active heads from ChainHeadManager`);
+                        if (headsArray.length > 0) return headsArray;
+                    }
+                }
+                
+                // Method 2: Try getHeads() - returns {nearBorder, farBorder} object
+                if (typeof this.chainHeadManager.getHeads === 'function') {
+                    const result = this.chainHeadManager.getHeads();
+                    
+                    // Handle object result: {nearBorder: head1, farBorder: head2}
+                    if (result && typeof result === 'object' && !Array.isArray(result)) {
+                        if (result.nearBorder) headsArray.push(result.nearBorder);
+                        if (result.farBorder) headsArray.push(result.farBorder);
+                        this.log(`✅ Got ${headsArray.length} heads from ChainHeadManager.getHeads() object`);
+                        if (headsArray.length > 0) return headsArray;
+                    }
+                    
+                    // Handle array result (fallback)
+                    if (Array.isArray(result)) {
+                        headsArray = result;
+                        this.log(`✅ Got ${headsArray.length} heads from ChainHeadManager.getHeads() array`);
+                        if (headsArray.length > 0) return headsArray;
+                    }
+                }
+                
+            } catch (error) {
+                this.log(`⚠️ ChainHeadManager error: ${error.message}`);
             }
+        }
+        
+        // Fallback: Get all player positions as heads
+        if (headsArray.length === 0) {
+            const board = this.gameCore.board;
+            for (let row = 0; row < this.gameCore.size; row++) {
+                for (let col = 0; col < this.gameCore.size; col++) {
+                    if (board[row][col] === this.player) {
+                        headsArray.push({ row, col });
+                    }
+                }
+            }
+            this.log(`📍 Using ${headsArray.length} player positions as fallback heads`);
+        }
+        
+        return headsArray;
+    }
+
+    selectHeadWithPersonality(heads) {
+        if (!Array.isArray(heads) || heads.length === 0) {
+            return null;
+        }
+        
+        if (Math.random() < this.randomization.headSelection) {
+            return heads[Math.floor(Math.random() * heads.length)];
+        }
+        
+        return heads.reduce((best, head) => {
+            const headScore = this.evaluateHead(head);
+            const bestScore = best ? this.evaluateHead(best) : -1;
+            return headScore > bestScore ? head : best;
+        }, null);
+    }
+
+    evaluateHead(head) {
+        const borderDistance = this.player === 'X' ? 
+            Math.min(head.row, 14 - head.row) : 
+            Math.min(head.col, 14 - head.col);
+        
+        return 100 - borderDistance;
+    }
+
+    generateLPatternFromHead(head) {
+        const patterns = this.getValidLPatterns(head);
+        
+        if (patterns.length === 0) {
+            return null;
+        }
+        
+        const selected = Math.random() < this.randomization.lPatternChoice ?
+            patterns[Math.floor(Math.random() * patterns.length)] :
+            patterns[0];
+        
+        return {
+            row: selected.row,
+            col: selected.col,
+            value: 5000,
+            reason: 'L-pattern extension',
+            pattern: 'L-pattern'
+        };
+    }
+
+    getValidLPatterns(position) {
+        const valid = [];
+        
+        for (const [dr, dc] of this.strategicLPatterns) {
+            const newRow = position.row + dr;
+            const newCol = position.col + dc;
             
-            const gapCells = this.getBorderIPatternGaps(piece, borderType);
+            if (this.isValidMove(newRow, newCol)) {
+                valid.push({ row: newRow, col: newCol });
+            }
+        }
+        
+        return valid;
+    }
+
+    generateBorderConnectionMove(head) {
+        const targetBorder = this.player === 'X' ? 
+            (head.row < 7 ? 0 : 14) : 
+            (head.col < 7 ? 0 : 14);
+        
+        if (this.player === 'X') {
+            const targetRow = targetBorder === 0 ? 
+                Math.max(0, head.row - 2) : 
+                Math.min(14, head.row + 2);
             
-            for (const gapCell of gapCells) {
-                if (this.gameCore.isValidPosition(gapCell.row, gapCell.col) &&
-                    this.gameCore.board[gapCell.row][gapCell.col] === '') {
-                    
-                    const basePriority = 8000;
-                    const personalityPriority = basePriority * this.priorities.borderConnection;
-                    
-                    this.log(`🎯 BORDER I-pattern: Connect (${piece.row},${piece.col}) to ${borderType.toUpperCase()} via (${gapCell.row},${gapCell.col})`);
-                    
+            if (this.isValidMove(targetRow, head.col)) {
+                return {
+                    row: targetRow,
+                    col: head.col,
+                    value: 7000,
+                    reason: `Connect to ${targetBorder === 0 ? 'top' : 'bottom'} border`,
+                    pattern: 'border-connection'
+                };
+            }
+        } else {
+            const targetCol = targetBorder === 0 ? 
+                Math.max(0, head.col - 2) : 
+                Math.min(14, head.col + 2);
+            
+            if (this.isValidMove(head.row, targetCol)) {
+                return {
+                    row: head.row,
+                    col: targetCol,
+                    value: 7000,
+                    reason: `Connect to ${targetBorder === 0 ? 'left' : 'right'} border`,
+                    pattern: 'border-connection'
+                };
+            }
+        }
+        
+        return null;
+    }
+
+    generateInitialMove() {
+        const center = Math.floor(this.gameCore.size / 2);
+        const range = 2;
+        
+        for (let dr = -range; dr <= range; dr++) {
+            for (let dc = -range; dc <= range; dc++) {
+                const row = center + dr;
+                const col = center + dc;
+                
+                if (this.isValidMove(row, col)) {
                     return {
-                        row: gapCell.row,
-                        col: gapCell.col,
-                        value: personalityPriority,
-                        reason: `${this.personalityName}: Border I-pattern to ${borderType.toUpperCase()}`,
-                        pattern: 'border-I-complete'
+                        row: row,
+                        col: col,
+                        value: 4000,
+                        reason: 'Initial position',
+                        pattern: 'initial'
                     };
                 }
             }
@@ -330,471 +619,101 @@ class SimpleChainAI {
         return null;
     }
 
-    // ===== STEP 5: Fragment-Aware Chain Extension (KEY ENHANCEMENT) =====
-    getFragmentAwareChainExtension() {
-        if (this.moveCount === 1) {
-            return this.makePersonalityDrivenFirstMove();
-        }
-        
-        const fragmentStats = this.chainHeadManager.getStats();
-        
-        this.log(`🔗 Fragment-aware extension: ${fragmentStats.fragmentCount} fragments, active: ${fragmentStats.activeFragmentId}`);
-        
-        // If we have no active fragment, something is wrong
-        if (fragmentStats.activeFragmentId === undefined) {
-            this.log('⚠️ No active fragment for extension');
-            return null;
-        }
-        
-        const selectedHead = this.chainHeadManager.selectRandomHead();
-        if (!selectedHead) {
-            this.log('⚠️ No heads available for extension in active fragment');
-            return null;
-        }
-        
-        const headDirection = this.chainHeadManager.getHeadDirection(selectedHead);
-        const extensionMove = this.generatePersonalityDrivenLPatternMove(selectedHead, headDirection);
-        
-        if (extensionMove) {
-            // Apply personality to base priority
-            const basePriority = 2200;
-            extensionMove.value = basePriority * this.priorities.chainExtension;
-            extensionMove.reason = `${this.personalityName}: Fragment ${fragmentStats.activeFragmentId} - ${extensionMove.reason}`;
-            
-            this.log(`🔗 Fragment extension: (${extensionMove.row},${extensionMove.col}) ${headDirection} priority=${extensionMove.value.toFixed(0)}`);
-            return extensionMove;
-        }
-        
-        return null;
-    }
-
-    // First move logic (unchanged)
-    makePersonalityDrivenFirstMove() {
-        const config = this.startingArea;
-        const size = this.gameCore.size;
-        
-        this.log(`🎯 ${this.personalityName} making first move with personality preferences`);
-        
-        const candidates = [];
-        
-        for (let row = config.rowRange[0]; row <= config.rowRange[1]; row++) {
-            for (let col = config.colRange[0]; col <= config.colRange[1]; col++) {
-                if (this.gameCore.isValidPosition(row, col) && 
-                    this.gameCore.board[row][col] === '' &&
-                    this.gameCore.isValidMove(row, col)) {
-                    
-                    let weight = 1.0;
-                    const center = Math.floor(size / 2);
-                    const distanceFromCenter = Math.abs(row - center) + Math.abs(col - center);
-                    const centerBonus = config.centerWeight * (4 - Math.min(distanceFromCenter, 4)) / 4;
-                    weight *= (1 + centerBonus);
-                    
-                    if (config.avoidEdges) {
-                        const edgeDistance = Math.min(row, col, size - 1 - row, size - 1 - col);
-                        if (edgeDistance < 2) {
-                            weight *= 0.2;
-                        } else if (edgeDistance < 3) {
-                            weight *= 0.6;
-                        }
-                    }
-                    
-                    const randomFactor = 1 + (Math.random() - 0.5) * this.randomization.startingPosition;
-                    weight *= randomFactor;
-                    
-                    candidates.push({ row, col, weight, distanceFromCenter });
-                }
-            }
-        }
-        
-        if (candidates.length === 0) {
-            const center = Math.floor(size / 2);
-            return {
-                row: center, col: center, value: 100,
-                reason: `${this.personalityName} fallback center start`,
-                pattern: 'start'
-            };
-        }
-        
-        const selectedPosition = this.weightedRandomSelect(candidates);
-        
-        return {
-            row: selectedPosition.row,
-            col: selectedPosition.col,
-            value: 100,
-            reason: `${this.personalityName} first move at (${selectedPosition.row},${selectedPosition.col})`,
-            pattern: 'start'
-        };
-    }
-
-    // L-pattern generation (unchanged)
-    generatePersonalityDrivenLPatternMove(head, direction) {
-        const directedPatterns = this.strategicLPatterns.filter(([dr, dc]) => {
-            switch (direction) {
-                case 'up': return dr < 0;
-                case 'down': return dr > 0;
-                case 'left': return dc < 0;
-                case 'right': return dc > 0;
-                default: return true;
-            }
-        });
-        
-        const randomizationLevel = this.randomization.lPatternChoice;
-        
-        if (randomizationLevel > 0 && Math.random() < randomizationLevel) {
-            this.shuffleArray(directedPatterns);
-            this.log(`🎲 ${this.personalityName}: Randomized L-pattern order`);
-        }
-        
-        for (let i = 0; i < directedPatterns.length; i++) {
-            const [dr, dc] = directedPatterns[i];
-            const targetRow = head.row + dr;
-            const targetCol = head.col + dc;
-            
-            if (this.isValidExtensionMove(targetRow, targetCol) &&
-                this.validateLPatternGaps(head, targetRow, targetCol)) {
-                
-                const baseValue = this.calculateMoveValue(targetRow, targetCol);
-                const personalityBonus = this.calculatePersonalityMoveBonus(targetRow, targetCol, dr, dc);
-                const finalValue = baseValue + personalityBonus;
-                
-                return {
-                    row: targetRow, col: targetCol,
-                    value: finalValue,
-                    reason: `L-pattern [${dr},${dc}] from head toward ${direction}`,
-                    pattern: 'L-extension'
-                };
-            }
-        }
-        
-        return null;
-    }
-
-    // ===== STEP 6: Safe Gap Filling (unchanged) =====
+    // ===== STEP 6: Safe Gap Filling =====
     fillPersonalityDrivenSafeGaps() {
         if (!this.gapRegistry) {
-            this.log('⚠️ No gap registry available for safe gap filling');
             return null;
         }
-
-        this.log(`🔧 ${this.personalityName} checking safe gaps...`);
-
-        const safeGaps = this.gapRegistry.getOwnUnthreatenedGaps();
         
-        if (safeGaps.length > 0) {
-            const selectedGap = this.selectPersonalityDrivenSafeGap(safeGaps);
-            this.lastMoveType = 'safe-gap';
+        try {
+            const safeGaps = this.gapRegistry.getOwnUnthreatenedGaps ? 
+                this.gapRegistry.getOwnUnthreatenedGaps(this.player) : [];
             
-            const personalityPriority = selectedGap.priority * this.priorities.safeGapFilling;
-            
-            return {
-                row: selectedGap.row,
-                col: selectedGap.col,
-                value: personalityPriority,
-                reason: `${this.personalityName}: ${selectedGap.reason}`,
-                pattern: 'safe-gap'
-            };
+            if (Array.isArray(safeGaps) && safeGaps.length > 0) {
+                const gap = safeGaps[0];
+                
+                return {
+                    row: gap.row,
+                    col: gap.col,
+                    value: 3000 + (gap.priority || 0),
+                    reason: 'Fill safe gap',
+                    pattern: 'gap-fill'
+                };
+            }
+        } catch (error) {
+            this.log(`⚠️ Safe gap filling failed: ${error.message}`);
         }
-
-        this.log('✅ No safe gaps available');
+        
         return null;
     }
 
-    selectPersonalityDrivenSafeGap(safeGaps) {
-        const randomizationLevel = this.randomization.moveSelection;
-        
-        if (randomizationLevel > 0 && Math.random() < randomizationLevel && safeGaps.length > 1) {
-            const topCandidates = safeGaps.slice(0, Math.min(3, safeGaps.length));
-            const randomIndex = Math.floor(Math.random() * topCandidates.length);
-            this.log(`🎲 ${this.personalityName}: Random gap selection from top ${topCandidates.length} candidates`);
-            return topCandidates[randomIndex];
-        }
-        
-        return safeGaps[0];
-    }
-
-    // ===== ALL OTHER UTILITY METHODS (unchanged) =====
+    // ===== Utility Methods =====
     
-    // Utility methods
-    weightedRandomSelect(candidates) {
-        if (candidates.length === 0) return null;
-        if (candidates.length === 1) return candidates[0];
-        
-        const totalWeight = candidates.reduce((sum, c) => sum + Math.max(c.weight, 0.01), 0);
-        let random = Math.random() * totalWeight;
-        
-        for (const candidate of candidates) {
-            random -= Math.max(candidate.weight, 0.01);
-            if (random <= 0) return candidate;
+    isValidMove(row, col) {
+        if (this.gameCore.isValidMove) {
+            return this.gameCore.isValidMove(row, col);
         }
         
-        return candidates[0];
+        // Fallback validation
+        return row >= 0 && row < this.gameCore.size && 
+               col >= 0 && col < this.gameCore.size &&
+               this.gameCore.board[row][col] === '';
     }
 
-    shuffleArray(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
-        }
-        return array;
-    }
-
-    calculatePersonalityMoveBonus(row, col, dr, dc) {
-        let bonus = 0;
+    cleanupOldThreats() {
+        const currentMove = this.moveCount;
         
-        const extensionDistance = Math.abs(dr) + Math.abs(dc);
-        if (this.strategy.riskTaking > 0.6 && extensionDistance >= 3) {
-            bonus += 50;
-        }
-        
-        if (this.strategy.riskTaking < 0.4) {
-            const edgeDistance = Math.min(
-                row, col, 
-                this.gameCore.size - 1 - row, 
-                this.gameCore.size - 1 - col
-            );
-            if (edgeDistance >= 3) {
-                bonus += 30;
+        for (const [key, threat] of this.threatMemory) {
+            if (currentMove - threat.moveNumber > 4) {
+                this.threatMemory.delete(key);
             }
         }
-        
-        return bonus;
     }
 
-    logMoveDecision(move, decisionType) {
-        this.log(`📊 Decision Phase: ${this.getPhaseFromMoveType(this.lastMoveType || decisionType)}`);
-        this.log(`🎯 Move: (${move.row},${move.col}) | Priority: ${move.value} | Type: ${move.pattern}`);
-        this.log(`🎭 Personality Influence: ${this.personalityName}`);
-    }
-
-    // All validation and helper methods (unchanged)
-    validateLPatternGaps(fromPos, toRow, toCol) {
-        const dr = toRow - fromPos.row;
-        const dc = toCol - fromPos.col;
-        
-        if (!((Math.abs(dr) === 2 && Math.abs(dc) === 1) || 
-              (Math.abs(dr) === 1 && Math.abs(dc) === 2))) {
-            return false;
-        }
-        
-        let gapCells = [];
-        
-        if (Math.abs(dr) === 2 && Math.abs(dc) === 1) {
-            const midRow = fromPos.row + (dr > 0 ? 1 : -1);
-            gapCells = [
-                { row: midRow, col: fromPos.col },
-                { row: midRow, col: toCol }
-            ];
-        } else if (Math.abs(dr) === 1 && Math.abs(dc) === 2) {
-            const midCol = fromPos.col + (dc > 0 ? 1 : -1);
-            gapCells = [
-                { row: fromPos.row, col: midCol },
-                { row: toRow, col: midCol }
-            ];
-        }
-        
-        const opponent = this.getOpponent();
-        let navigableGaps = 0;
-        
-        for (const gap of gapCells) {
-            if (!this.gameCore.isValidPosition(gap.row, gap.col)) {
-                continue;
-            }
-            
-            const cellContent = this.gameCore.board[gap.row][gap.col];
-            
-            if (cellContent === '' || cellContent === this.player) {
-                navigableGaps++;
-            }
-        }
-        
-        return navigableGaps > 0;
-    }
-
-    getBorderIPatternGaps(piece, borderType) {
-        const gaps = [];
-        
-        if (this.player === 'X') {
-            if (borderType === 'top') {
-                gaps.push({ row: 0, col: piece.col - 1 });
-                gaps.push({ row: 0, col: piece.col });     
-                gaps.push({ row: 0, col: piece.col + 1 });
-            } else if (borderType === 'bottom') {
-                const borderRow = this.gameCore.size - 1;
-                gaps.push({ row: borderRow, col: piece.col - 1 });
-                gaps.push({ row: borderRow, col: piece.col });
-                gaps.push({ row: borderRow, col: piece.col + 1 });
-            }
-        }
-        
-        return gaps.filter(gap => this.gameCore.isValidPosition(gap.row, gap.col));
-    }
-
-    hasBorderConnectionForPiece(piece, borderType) {
-        const gapCells = this.getBorderIPatternGaps(piece, borderType);
-        
-        for (const gapCell of gapCells) {
-            if (this.gameCore.isValidPosition(gapCell.row, gapCell.col) &&
-                this.gameCore.board[gapCell.row][gapCell.col] === this.player) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-
-    calculateMoveValue(row, col) {
-        let value = 100;
-        
-        if (this.player === 'X') {
-            if (row === 0 || row === this.gameCore.size - 1) value += 300;
-        } else {
-            if (col === 0 || col === this.gameCore.size - 1) value += 300;
-        }
-        
-        const connectivity = this.countAdjacentOurPieces({ row, col });
-        value += connectivity * 50;
-        
-        return value;
-    }
-
-    isValidExtensionMove(row, col) {
-        return this.gameCore.isValidPosition(row, col) && 
-               this.gameCore.board[row][col] === '' &&
-               this.gameCore.isValidMove(row, col);
-    }
-
-    countAdjacentOurPieces(position) {
-        let count = 0;
-        const directions = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,-1], [1,0], [1,1]];
-        
-        for (const [dr, dc] of directions) {
-            const checkRow = position.row + dr;
-            const checkCol = position.col + dc;
-            
-            if (this.gameCore.isValidPosition(checkRow, checkCol) &&
-                this.gameCore.board[checkRow][checkCol] === this.player) {
-                count++;
-            }
-        }
-        
-        return count;
-    }
-
-    getOpponent() {
-        return this.player === 'X' ? 'O' : 'X';
-    }
-
-    // ===== ENHANCED STATISTICS WITH FRAGMENT INFO =====
-    
-    getStats() {
-        const fragmentStats = this.chainHeadManager.getStats();
-        
-        // LIGHTWEIGHT: Don't call expensive gap methods during display updates
-        let gapStats = { totalGaps: 0, patterns: 0 };
-        if (this.gapRegistry) {
-            try {
-                const registryStats = this.gapRegistry.getStats();
-                gapStats = {
-                    totalGaps: registryStats.totalActiveGaps || 0,
-                    patterns: registryStats.totalPatterns || 0,
-                    aiGaps: registryStats.activeGapsByType?.['X-X'] || 0,
-                    humanGaps: registryStats.activeGapsByType?.['O-O'] || 0
-                };
-            } catch (error) {
-                this.log(`⚠️ Error getting gap registry stats: ${error.message}`);
-            }
-        }
-        
-        return {
-            chainLength: fragmentStats.totalPieces,
-            moveCount: this.moveCount,
-            direction: this.direction,
-            lastMoveType: this.lastMoveType,
-            heads: fragmentStats.nearBorderHead && fragmentStats.farBorderHead ? 2 : 
-                   (fragmentStats.nearBorderHead || fragmentStats.farBorderHead ? 1 : 0),
-            currentPhase: this.getPhaseFromMoveType(this.lastMoveType),
-            gaps: gapStats,
-            isComplete: false,
-            
-            // NEW: Fragment information
-            fragments: {
-                count: fragmentStats.fragmentCount,
-                activeId: fragmentStats.activeFragmentId,
-                activeSize: fragmentStats.activeFragmentSize,
-                isConnected: fragmentStats.isConnected,
-                canWin: fragmentStats.canWin
-            },
-            
-            // Personality information
-            personality: {
-                name: this.personalityName,
-                id: this.personalityId,
-                attackThreshold: this.strategy.attackThreshold,
-                riskTaking: this.strategy.riskTaking,
-                independentPlaying: this.strategy.independentPlaying
-            }
-        };
-    }
-
-    getPhaseFromMoveType(moveType) {
-        switch (moveType) {
-            case 'threatened-gap':
-            case 'safe-gap':
-                return 'gap-filling';
-            case 'critical-attack':
-            case 'standard-attack':
-            case 'opportunistic-attack':
-                return 'attacking';
-            case 'fragment-connection':
-                return 'fragment-connection';
-            case 'chain-extension':
-            case 'border-connection':
-                return 'chain-extension';
-            case 'start':
-                return 'initialization';
-            default:
-                return 'thinking';
-        }
-    }
-
-    // Enhanced debug analysis with fragment info
-    debugAnalyzeCurrentState() {
-        this.log(`\n🤖 === ${this.personalityName.toUpperCase()} AI STATE ANALYSIS ===`);
-        
-        // Personality info
-        this.log(`🎭 Personality: ${this.personalityName} (${this.personalityId})`);
-        
-        // Chain analysis with fragments
-        const stats = this.getStats();
-        this.log(`Chain: ${stats.chainLength} pieces in ${stats.fragments.count} fragments`);
-        this.log(`Active fragment: #${stats.fragments.activeId} (${stats.fragments.activeSize} pieces)`);
-        this.log(`Connected: ${stats.fragments.isConnected}, Can win: ${stats.fragments.canWin}`);
-        
-        // Fragment analysis
-        if (this.chainHeadManager) {
-            this.chainHeadManager.analyzeChainStructure();
-        }
-        
-        // Gap analysis
-        if (this.gapRegistry && typeof this.gapRegistry.debugGapDetection === 'function') {
-            this.gapRegistry.debugGapDetection();
-        }
-        
-        this.log(`🤖 === END ${this.personalityName.toUpperCase()} AI ANALYSIS ===\n`);
+    logMoveDecision(move, type) {
+        this.lastMoveType = type;
+        this.log(`📝 Decision: ${type} at (${move.row},${move.col}) - ${move.reason}`);
     }
 
     log(message) {
         if (this.debugMode) {
-            console.log(`[${this.player}-${this.personalityId?.toUpperCase() || 'DEFAULT'}] ${message}`);
+            console.log(`[${this.player}-AI] ${message}`);
+        }
+    }
+
+    // ===== Stats and Debug =====
+    
+    getStats() {
+        return {
+            player: this.player,
+            personality: this.personalityName,
+            moveCount: this.moveCount,
+            lastMoveType: this.lastMoveType,
+            fragments: this.chainHeadManager && this.chainHeadManager.getStats ? 
+                this.chainHeadManager.getStats() : 
+                { fragmentCount: 0, totalPieces: 0, activeHeads: 0 },
+            threatMemory: {
+                active: this.threatMemory.size,
+                pending: this.lastThreatMade ? 1 : 0
+            }
+        };
+    }
+
+    debugThreatMemory() {
+        console.log('🔍 THREAT MEMORY:');
+        console.log(`  Last threat: ${this.lastThreatMade ? 
+            `(${this.lastThreatMade.targetRow},${this.lastThreatMade.targetCol}) at move ${this.lastThreatMade.moveNumber}` : 
+            'None'}`);
+        console.log(`  Stored: ${this.threatMemory.size}`);
+        
+        for (const [key, threat] of this.threatMemory) {
+            console.log(`    - ${key}: ${threat.patternType} from move ${threat.moveNumber}`);
         }
     }
 }
 
-// Export for browser
+// Export
 if (typeof window !== 'undefined') {
     window.SimpleChainAI = SimpleChainAI;
-    console.log('✅ Fragment-Aware SimpleChainAI exported to window object (SAME FILENAME, NEW FUNCTIONALITY)');
-} else {
-    console.warn('⚠️ Window object not available - export failed');
+    console.log('✅ FIXED SimpleChainAI loaded - TypeError resolved + threat follow-through added');
 }
-
