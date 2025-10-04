@@ -1,392 +1,89 @@
-// gap-blocking-detector.js - System to detect and remove gaps blocked by diagonal lines
-// Integrates with diagonal line detection to remove invalid opponent gaps
+// gap-blocking-detector.js - COMPLETE: All blocking detection logic
+// PURPOSE: Centralized blocking detection for gaps AND patterns
+// ARCHITECTURE: Single source of truth for all blocking checks
 
 class GapBlockingDetector {
-    constructor(gameCore, patternDetector) {
+    constructor(gameCore, patternDetector = null) {
         this.gameCore = gameCore;
         this.patternDetector = patternDetector;
-        this.debugMode = true;
+        this.diagonalLinesManager = null; // Injected later by system initializer
+        this.debugMode = false;
         
-        // Cache of known blocked gaps
-        this.blockedGaps = new Map(); // key: "row-col-player", value: blocking reason
+        // Cache system
+        this.blockingCache = new Map();
         this.lastCheckedMove = -1;
         
-        this.log('🚧 Gap Blocking Detector initialized');
+        this.log('🚧 Gap Blocking Detector initialized - Complete blocking detection');
     }
 
+    // ===== MODULE CONNECTIONS =====
+    
+    setPatternDetector(patternDetector) {
+        this.patternDetector = patternDetector;
+        this.log('🔗 Pattern Detector connected');
+    }
+
+    setDiagonalLinesManager(diagonalLinesManager) {
+        this.diagonalLinesManager = diagonalLinesManager;
+        this.log('🔗 Diagonal Lines Manager connected');
+    }
+
+    // ===== MAIN API: GAP BLOCKING =====
+    
     /**
-     * MAIN: Check if a gap is blocked by opponent diagonal lines
-     * Returns true if gap is blocked (should be removed from registry)
+     * Check if a gap is blocked by opponent diagonal lines
      */
     isGapBlocked(gap, gapOwner) {
+        if (!gap || !gapOwner) {
+            return { blocked: false, reason: 'Invalid input' };
+        }
+
         const currentMove = this.gameCore.moveCount || 0;
-        const cacheKey = `${gap.row}-${gap.col}-${gapOwner}`;
+        const cacheKey = `gap-${gap.row}-${gap.col}-${gapOwner}-${currentMove}`;
         
-        // Check cache first
-        if (this.lastCheckedMove === currentMove && this.blockedGaps.has(cacheKey)) {
-            return this.blockedGaps.get(cacheKey);
+        // Check cache
+        if (this.blockingCache.has(cacheKey)) {
+            return this.blockingCache.get(cacheKey);
         }
         
         const opponent = gapOwner === 'X' ? 'O' : 'X';
+        let result = { blocked: false, reason: 'No blocking detected' };
         
-        // Method 1: Check if gap cell is directly blocked by opponent piece
-        if (this.gameCore.board[gap.row][gap.col] === opponent) {
-            const blockInfo = { blocked: true, reason: `Gap filled by ${opponent}`, method: 'direct' };
-            this.blockedGaps.set(cacheKey, blockInfo);
-            this.log(`🚫 Gap (${gap.row},${gap.col}) blocked: ${blockInfo.reason}`);
-            return blockInfo;
-        }
-        
-        // Method 2: Check if gap is crossed by opponent diagonal connections
-        const diagonalBlock = this.checkDiagonalBlocking(gap, gapOwner, opponent);
-        if (diagonalBlock.blocked) {
-            this.blockedGaps.set(cacheKey, diagonalBlock);
-            this.log(`🚫 Gap (${gap.row},${gap.col}) blocked by diagonal: ${diagonalBlock.reason}`);
-            return diagonalBlock;
-        }
-        
-        // Method 3: Check if gap connection path is severed
-        const pathBlock = this.checkConnectionPathBlocked(gap, gapOwner, opponent);
-        if (pathBlock.blocked) {
-            this.blockedGaps.set(cacheKey, pathBlock);
-            this.log(`🚫 Gap (${gap.row},${gap.col}) blocked path: ${pathBlock.reason}`);
-            return pathBlock;
-        }
-        
-        // Gap is not blocked
-        const notBlocked = { blocked: false, reason: 'Gap is clear' };
-        this.blockedGaps.set(cacheKey, notBlocked);
-        
-        return notBlocked;
-    }
-
-    /**
-     * Check if opponent diagonal connections block the gap
-     */
-    checkDiagonalBlocking(gap, gapOwner, opponent) {
-        // Get the pattern this gap belongs to
-        if (!gap.pattern || !gap.pattern.piece1 || !gap.pattern.piece2) {
-            return { blocked: false, reason: 'No pattern information' };
-        }
-        
-        const piece1 = gap.pattern.piece1;
-        const piece2 = gap.pattern.piece2;
-        
-        this.log(`🔍 Checking diagonal blocking for ${gapOwner} gap (${gap.row},${gap.col}) between (${piece1.row},${piece1.col}) and (${piece2.row},${piece2.col})`);
-        
-        // For I-patterns: check if opponent diagonal crosses the connection line
-        if (gap.patternType === 'I') {
-            return this.checkIPatternDiagonalBlocking(gap, piece1, piece2, opponent);
-        }
-        
-        // For L-patterns: check if opponent pieces block both gap cells
-        if (gap.patternType === 'L') {
-            return this.checkLPatternDiagonalBlocking(gap, piece1, piece2, opponent);
-        }
-        
-        return { blocked: false, reason: 'Unknown pattern type' };
-    }
-
-    /**
-     * Check I-pattern diagonal blocking
-     * I-patterns are vulnerable to diagonal cuts across their connection line
-     */
-    checkIPatternDiagonalBlocking(gap, piece1, piece2, opponent) {
-        // Determine I-pattern orientation
-        const isVertical = piece1.col === piece2.col; // Same column = vertical I
-        const isHorizontal = piece1.row === piece2.row; // Same row = horizontal I
-        
-        if (!isVertical && !isHorizontal) {
-            return { blocked: false, reason: 'Invalid I-pattern' };
-        }
-        
-        if (isVertical) {
-            // Vertical I-pattern: check for horizontal diagonal cuts
-            return this.checkVerticalIBlocking(gap, piece1, piece2, opponent);
-        } else {
-            // Horizontal I-pattern: check for vertical diagonal cuts  
-            return this.checkHorizontalIBlocking(gap, piece1, piece2, opponent);
-        }
-    }
-
-    /**
-     * Check if vertical I-pattern is blocked by diagonal connections
-     */
-    checkVerticalIBlocking(gap, piece1, piece2, opponent) {
-        // Vertical I: pieces at (row1, col) and (row2, col), gap line is vertical
-        const col = piece1.col;
-        const minRow = Math.min(piece1.row, piece2.row);
-        const maxRow = Math.max(piece1.row, piece2.row);
-        const gapRow = Math.floor((minRow + maxRow) / 2); // Middle row
-        
-        this.log(`🔍 Vertical I-pattern: col ${col}, rows ${minRow}-${maxRow}, gap row ${gapRow}`);
-        
-        // Check for opponent diagonal connections that cross the gap line
-        // Look for opponent pieces that form diagonal connections across the gap
-        
-        // Check left diagonal crossing (opponent pieces at [gapRow-1, col-1] and [gapRow+1, col+1])
-        const topLeftOpponent = this.gameCore.board[gapRow - 1] && this.gameCore.board[gapRow - 1][col - 1] === opponent;
-        const bottomRightOpponent = this.gameCore.board[gapRow + 1] && this.gameCore.board[gapRow + 1][col + 1] === opponent;
-        
-        if (topLeftOpponent && bottomRightOpponent) {
-            // Check if this diagonal connection was established first (using diagonal lines system)
-            const diagonalExists = this.checkDiagonalConnectionExists(
-                { row: gapRow - 1, col: col - 1 }, 
-                { row: gapRow + 1, col: col + 1 }, 
-                opponent
-            );
-            
-            if (diagonalExists) {
-                return { 
-                    blocked: true, 
-                    reason: `Diagonal ${opponent} connection crosses vertical I-pattern`,
-                    method: 'diagonal-cross',
-                    blockingPieces: [
-                        { row: gapRow - 1, col: col - 1 },
-                        { row: gapRow + 1, col: col + 1 }
-                    ]
-                };
-            }
-        }
-        
-        // Check right diagonal crossing (opponent pieces at [gapRow-1, col+1] and [gapRow+1, col-1])
-        const topRightOpponent = this.gameCore.board[gapRow - 1] && this.gameCore.board[gapRow - 1][col + 1] === opponent;
-        const bottomLeftOpponent = this.gameCore.board[gapRow + 1] && this.gameCore.board[gapRow + 1][col - 1] === opponent;
-        
-        if (topRightOpponent && bottomLeftOpponent) {
-            const diagonalExists = this.checkDiagonalConnectionExists(
-                { row: gapRow - 1, col: col + 1 }, 
-                { row: gapRow + 1, col: col - 1 }, 
-                opponent
-            );
-            
-            if (diagonalExists) {
-                return { 
-                    blocked: true, 
-                    reason: `Diagonal ${opponent} connection crosses vertical I-pattern`,
-                    method: 'diagonal-cross',
-                    blockingPieces: [
-                        { row: gapRow - 1, col: col + 1 },
-                        { row: gapRow + 1, col: col - 1 }
-                    ]
-                };
-            }
-        }
-        
-        return { blocked: false, reason: 'Vertical I-pattern clear' };
-    }
-
-    /**
-     * Check if horizontal I-pattern is blocked by diagonal connections
-     */
-    checkHorizontalIBlocking(gap, piece1, piece2, opponent) {
-        // Horizontal I: pieces at (row, col1) and (row, col2), gap line is horizontal
-        const row = piece1.row;
-        const minCol = Math.min(piece1.col, piece2.col);
-        const maxCol = Math.max(piece1.col, piece2.col);
-        const gapCol = Math.floor((minCol + maxCol) / 2); // Middle column
-        
-        this.log(`🔍 Horizontal I-pattern: row ${row}, cols ${minCol}-${maxCol}, gap col ${gapCol}`);
-        
-        // Check for opponent diagonal connections that cross the gap line
-        
-        // Check diagonal crossing (opponent pieces at [row-1, gapCol-1] and [row+1, gapCol+1])
-        const topLeftOpponent = this.gameCore.board[row - 1] && this.gameCore.board[row - 1][gapCol - 1] === opponent;
-        const bottomRightOpponent = this.gameCore.board[row + 1] && this.gameCore.board[row + 1][gapCol + 1] === opponent;
-        
-        if (topLeftOpponent && bottomRightOpponent) {
-            const diagonalExists = this.checkDiagonalConnectionExists(
-                { row: row - 1, col: gapCol - 1 }, 
-                { row: row + 1, col: gapCol + 1 }, 
-                opponent
-            );
-            
-            if (diagonalExists) {
-                return { 
-                    blocked: true, 
-                    reason: `Diagonal ${opponent} connection crosses horizontal I-pattern`,
-                    method: 'diagonal-cross',
-                    blockingPieces: [
-                        { row: row - 1, col: gapCol - 1 },
-                        { row: row + 1, col: gapCol + 1 }
-                    ]
-                };
-            }
-        }
-        
-        // Check other diagonal crossing
-        const topRightOpponent = this.gameCore.board[row - 1] && this.gameCore.board[row - 1][gapCol + 1] === opponent;
-        const bottomLeftOpponent = this.gameCore.board[row + 1] && this.gameCore.board[row + 1][gapCol - 1] === opponent;
-        
-        if (topRightOpponent && bottomLeftOpponent) {
-            const diagonalExists = this.checkDiagonalConnectionExists(
-                { row: row - 1, col: gapCol + 1 }, 
-                { row: row + 1, col: gapCol - 1 }, 
-                opponent
-            );
-            
-            if (diagonalExists) {
-                return { 
-                    blocked: true, 
-                    reason: `Diagonal ${opponent} connection crosses horizontal I-pattern`,
-                    method: 'diagonal-cross',
-                    blockingPieces: [
-                        { row: row - 1, col: gapCol + 1 },
-                        { row: row + 1, col: gapCol - 1 }
-                    ]
-                };
-            }
-        }
-        
-        return { blocked: false, reason: 'Horizontal I-pattern clear' };
-    }
-
-    /**
-     * Check L-pattern diagonal blocking
-     * L-patterns have 2 gap cells - if both are blocked, pattern is useless
-     */
-    checkLPatternDiagonalBlocking(gap, piece1, piece2, opponent) {
-        // Get all gap cells for this L-pattern
-        const allGaps = this.patternDetector.getLPatternGaps(piece1, piece2, this.gameCore);
-        
-        this.log(`🔍 L-pattern has ${allGaps.length} gap cells`);
-        
-        // Count how many gaps are blocked
-        let blockedGapCount = 0;
-        const blockingDetails = [];
-        
-        for (const gapCell of allGaps) {
-            // Check if this gap cell is occupied by opponent
-            if (this.gameCore.board[gapCell.row][gapCell.col] === opponent) {
-                blockedGapCount++;
-                blockingDetails.push(`(${gapCell.row},${gapCell.col}) filled by ${opponent}`);
-            }
-            
-            // Check if this gap is surrounded by opponent pieces
-            const surroundingOpponents = this.countSurroundingOpponents(gapCell, opponent);
-            if (surroundingOpponents >= 3) {
-                blockedGapCount++;
-                blockingDetails.push(`(${gapCell.row},${gapCell.col}) surrounded by ${opponent}`);
-            }
-        }
-        
-        // L-pattern is blocked if ALL gaps are blocked
-        if (blockedGapCount >= allGaps.length) {
-            return { 
+        // Method 1: Check diagonal blocking (primary method)
+        if (this.isDiagonallyBlocked(gap, gapOwner, opponent)) {
+            result = { 
                 blocked: true, 
-                reason: `L-pattern completely blocked: ${blockingDetails.join(', ')}`,
-                method: 'L-pattern-surrounded',
-                blockedGaps: blockedGapCount,
-                totalGaps: allGaps.length
+                reason: 'Blocked by opponent diagonal lines',
+                method: 'diagonal'
             };
         }
         
-        return { blocked: false, reason: `L-pattern has ${allGaps.length - blockedGapCount}/${allGaps.length} gaps clear` };
-    }
-
-    /**
-     * Check if a diagonal connection exists between two opponent pieces
-     * Integrates with the diagonal lines system
-     */
-    checkDiagonalConnectionExists(pos1, pos2, player) {
-        // Check if positions form a diagonal (knight's move not allowed here)
-        const dr = Math.abs(pos2.row - pos1.row);
-        const dc = Math.abs(pos2.col - pos1.col);
-        
-        // Must be true diagonal (equal row and column distance)
-        if (dr !== dc || dr === 0) {
-            return false;
-        }
-        
-        // Check if both positions contain the player's pieces
-        if (!this.gameCore.isValidPosition(pos1.row, pos1.col) || 
-            !this.gameCore.isValidPosition(pos2.row, pos2.col)) {
-            return false;
-        }
-        
-        if (this.gameCore.board[pos1.row][pos1.col] !== player ||
-            this.gameCore.board[pos2.row][pos2.col] !== player) {
-            return false;
-        }
-        
-        // If diagonal lines system is available, use it
-        if (this.gameCore.diagonalLinesManager) {
-            return this.gameCore.diagonalLinesManager.isPositionInDiagonalConnection(pos1.row, pos1.col, player) &&
-                   this.gameCore.diagonalLinesManager.isPositionInDiagonalConnection(pos2.row, pos2.col, player);
-        }
-        
-        // Fallback: assume diagonal connection exists if pieces are diagonally adjacent
-        return dr === 1 && dc === 1;
-    }
-
-    /**
-     * Check if connection path between pattern pieces is blocked
-     */
-    checkConnectionPathBlocked(gap, gapOwner, opponent) {
-        // This is a more complex check that would require path-finding
-        // For now, implement basic adjacency blocking
-        
-        if (!gap.pattern || !gap.pattern.piece1 || !gap.pattern.piece2) {
-            return { blocked: false, reason: 'No pattern information for path check' };
-        }
-        
-        // Check if gap is completely surrounded by opponent pieces
-        const surroundingOpponents = this.countSurroundingOpponents(gap, opponent);
-        
-        if (surroundingOpponents >= 6) { // Most adjacent cells are opponent
-            return { 
+        // Method 2: Check surrounding control
+        else if (this.isSurroundedByOpponent(gap, opponent)) {
+            result = { 
                 blocked: true, 
-                reason: `Gap surrounded by ${surroundingOpponents} ${opponent} pieces`,
+                reason: 'Surrounded by opponent pieces',
                 method: 'surrounded'
             };
         }
         
-        return { blocked: false, reason: 'Connection path clear' };
-    }
-
-    /**
-     * Count opponent pieces surrounding a position
-     */
-    countSurroundingOpponents(position, opponent) {
-        const directions = [
-            [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],           [0, 1],
-            [1, -1],  [1, 0],  [1, 1]
-        ];
+        // Cache result
+        this.blockingCache.set(cacheKey, result);
         
-        let count = 0;
-        
-        for (const [dr, dc] of directions) {
-            const checkRow = position.row + dr;
-            const checkCol = position.col + dc;
-            
-            if (this.gameCore.isValidPosition(checkRow, checkCol) &&
-                this.gameCore.board[checkRow][checkCol] === opponent) {
-                count++;
-            }
+        if (result.blocked && this.debugMode) {
+            this.log(`🚫 Gap (${gap.row},${gap.col}) blocked for ${gapOwner}: ${result.reason}`);
         }
         
-        return count;
+        return result;
     }
 
     /**
-     * Invalidate blocking cache when board changes
-     */
-    invalidateCache() {
-        this.blockedGaps.clear();
-        this.lastCheckedMove = -1;
-        this.log('🗑️ Gap blocking cache invalidated');
-    }
-
-    /**
-     * Filter out blocked gaps from a gap list
+     * Filter gaps to remove blocked ones
+     * Used by Gap Analyzer and Gap Registry
      */
     filterBlockedGaps(gaps, gapOwner) {
-        const currentMove = this.gameCore.moveCount || 0;
-        
-        if (this.lastCheckedMove !== currentMove) {
-            this.invalidateCache();
-            this.lastCheckedMove = currentMove;
+        if (!gaps || gaps.length === 0) {
+            return { validGaps: [], blockedGaps: [], totalFiltered: 0 };
         }
         
         const validGaps = [];
@@ -396,15 +93,18 @@ class GapBlockingDetector {
             const blockResult = this.isGapBlocked(gap, gapOwner);
             
             if (blockResult.blocked) {
-                blockedGaps.push({ ...gap, blockReason: blockResult.reason });
-                this.log(`🚫 Removed blocked gap: (${gap.row},${gap.col}) - ${blockResult.reason}`);
+                blockedGaps.push({ 
+                    ...gap, 
+                    blockReason: blockResult.reason,
+                    blockMethod: blockResult.method 
+                });
             } else {
                 validGaps.push(gap);
             }
         }
         
-        if (blockedGaps.length > 0) {
-            this.log(`🧹 Filtered out ${blockedGaps.length}/${gaps.length} blocked gaps for ${gapOwner}`);
+        if (blockedGaps.length > 0 && this.debugMode) {
+            this.log(`🧹 Filtered ${blockedGaps.length}/${gaps.length} blocked gaps for ${gapOwner}`);
         }
         
         return {
@@ -414,37 +114,375 @@ class GapBlockingDetector {
         };
     }
 
+    // ===== MAIN API: PATTERN BLOCKING AFTER MOVES =====
+    
     /**
-     * Debug method to analyze all gaps for blocking
+     * Check if opponent's move creates diagonal blocking for existing patterns
+     * CRITICAL: This detects when opponent diagonal cuts across our patterns
+     * Called by gap-registry after each move
      */
-    analyzeAllGapBlocking(player) {
-        this.log(`\n🚧 === GAP BLOCKING ANALYSIS FOR ${player} ===`);
+    checkPatternBlockingAfterMove(row, col, player, allPatterns) {
+        if (!allPatterns || allPatterns.length === 0) {
+            return { blockedPatterns: [], blockedCount: 0 };
+        }
+        
+        this.log(`🔍 Checking pattern blocking from move (${row},${col}) by ${player}`);
         
         const opponent = player === 'X' ? 'O' : 'X';
+        const opponentPatterns = allPatterns.filter(p => p.player1 === opponent);
         
-        // This would need to integrate with gap registry to get current gaps
-        // For now, just provide the interface
+        const blockedPatterns = [];
         
-        this.log(`🔍 Checking for gaps blocked by ${opponent} diagonal connections...`);
-        this.log(`🚧 === END BLOCKING ANALYSIS ===\n`);
+        for (const pattern of opponentPatterns) {
+            if (this.doesMoveBlockPattern(row, col, player, pattern)) {
+                this.log(`✂️ Pattern ${pattern.id} blocked by diagonal from (${row},${col})`);
+                blockedPatterns.push(pattern.id);
+            }
+        }
+        
+        if (blockedPatterns.length > 0) {
+            this.log(`🚪 Found ${blockedPatterns.length} pattern(s) blocked by new diagonal`);
+        }
         
         return {
-            player: player,
-            opponent: opponent,
-            analysisComplete: true
+            blockedPatterns: blockedPatterns,
+            blockedCount: blockedPatterns.length
         };
     }
 
     /**
-     * Get blocking statistics
+     * Check if a specific move blocks an existing pattern via diagonal
      */
+    doesMoveBlockPattern(row, col, player, pattern) {
+        if (!pattern.piece1 || !pattern.piece2) {
+            return false;
+        }
+        
+        const newPos = { row, col };
+        const p1 = pattern.piece1;
+        const p2 = pattern.piece2;
+        
+        // Check if new move is diagonally adjacent to pattern pieces
+        const isDiagToP1 = Math.abs(row - p1.row) === 1 && Math.abs(col - p1.col) === 1;
+        const isDiagToP2 = Math.abs(row - p2.row) === 1 && Math.abs(col - p2.col) === 1;
+        
+        if (!isDiagToP1 && !isDiagToP2) {
+            return false; // Not diagonally adjacent to pattern
+        }
+        
+        // Use gameCore's diagonal blocking check if available
+        if (typeof this.gameCore.isDiagonalBlocked === 'function') {
+            if (isDiagToP1 && this.gameCore.isDiagonalBlocked(newPos, p1, player)) {
+                return true;
+            }
+            if (isDiagToP2 && this.gameCore.isDiagonalBlocked(newPos, p2, player)) {
+                return true;
+            }
+        }
+        
+        // Fallback: check if new move completes a crossing diagonal
+        return this.checkCrossingDiagonal(newPos, player, p1, p2);
+    }
+
+    /**
+     * Check for crossing diagonal (fallback method)
+     */
+    checkCrossingDiagonal(newPos, player, p1, p2) {
+        const board = this.gameCore.board;
+        
+        // Check all diagonally adjacent cells to newPos
+        const diagonalNeighbors = [
+            { row: newPos.row - 1, col: newPos.col - 1 },
+            { row: newPos.row - 1, col: newPos.col + 1 },
+            { row: newPos.row + 1, col: newPos.col - 1 },
+            { row: newPos.row + 1, col: newPos.col + 1 }
+        ];
+        
+        for (const neighbor of diagonalNeighbors) {
+            if (this.gameCore.isValidPosition(neighbor.row, neighbor.col) &&
+                board[neighbor.row][neighbor.col] === player) {
+                
+                // Found a diagonal connection, check if it crosses pattern line
+                if (this.diagonalCrossesPattern(newPos, neighbor, p1, p2)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if diagonal line crosses pattern connection line
+     */
+    diagonalCrossesPattern(d1, d2, p1, p2) {
+        // Get crossing cells for diagonal d1-d2
+        const dCross1 = { row: d1.row, col: d2.col };
+        const dCross2 = { row: d2.row, col: d1.col };
+        
+        // Check if either pattern piece is in crossing position
+        const p1Match = (p1.row === dCross1.row && p1.col === dCross1.col) ||
+                        (p1.row === dCross2.row && p1.col === dCross2.col);
+        const p2Match = (p2.row === dCross1.row && p2.col === dCross1.col) ||
+                        (p2.row === dCross2.row && p2.col === dCross2.col);
+        
+        return p1Match || p2Match;
+    }
+
+    // ===== DIAGONAL BLOCKING DETECTION (For Gaps) =====
+    
+    /**
+     * Check if gap is blocked by diagonal lines
+     */
+    isDiagonallyBlocked(gap, gapOwner, opponent) {
+        if (!gap.pattern || !gap.patternType) {
+            return false;
+        }
+
+        // Check different pattern types
+        switch (gap.patternType) {
+            case 'L':
+                return this.isLPatternDiagonallyBlocked(gap, opponent);
+            case 'I':
+                return this.isIPatternDiagonallyBlocked(gap, opponent);
+            case 'D':
+                return this.isDiagonalPatternBlocked(gap, opponent);
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Check L-pattern diagonal blocking
+     */
+    isLPatternDiagonallyBlocked(gap, opponent) {
+        if (!gap.pattern || !gap.pattern.piece1 || !gap.pattern.piece2) {
+            return false;
+        }
+
+        const piece1 = gap.pattern.piece1;
+        const piece2 = gap.pattern.piece2;
+        
+        const diagonalsToCheck = this.getLPatternDiagonals(gap, piece1, piece2);
+        
+        let blockedDiagonals = 0;
+        for (const diagonal of diagonalsToCheck) {
+            if (this.isDiagonalConnectionBlocked(diagonal.from, diagonal.to, opponent)) {
+                blockedDiagonals++;
+            }
+        }
+        
+        return blockedDiagonals >= Math.ceil(diagonalsToCheck.length / 2);
+    }
+
+    /**
+     * Check I-pattern diagonal blocking
+     */
+    isIPatternDiagonallyBlocked(gap, opponent) {
+        if (!gap.pattern || !gap.pattern.piece1 || !gap.pattern.piece2) {
+            return false;
+        }
+
+        const piece1 = gap.pattern.piece1;
+        const piece2 = gap.pattern.piece2;
+        
+        return this.doesDiagonalCrossIPattern(piece1, piece2, gap, opponent);
+    }
+
+    /**
+     * Check diagonal pattern blocking
+     */
+    isDiagonalPatternBlocked(gap, opponent) {
+        return this.isPositionControlledByOpponentDiagonals(gap, opponent);
+    }
+
+    // ===== DIAGONAL CONNECTION ANALYSIS =====
+    
+    /**
+     * Check if diagonal connection is blocked by opponent
+     */
+    isDiagonalConnectionBlocked(from, to, opponent) {
+        const blockingPositions = this.getBlockingPositions(from, to);
+        
+        return blockingPositions.some(pos => 
+            this.gameCore.isValidPosition(pos.row, pos.col) &&
+            this.gameCore.board[pos.row][pos.col] === opponent
+        );
+    }
+
+    /**
+     * Check if opponent diagonal lines cross I-pattern connection
+     */
+    doesDiagonalCrossIPattern(piece1, piece2, gap, opponent) {
+        const connectionLine = this.getConnectionLine(piece1, piece2);
+        const crossingDiagonals = this.findCrossingDiagonals(connectionLine, opponent);
+        
+        return crossingDiagonals.length > 0;
+    }
+
+    /**
+     * Check if position is controlled by opponent diagonals
+     */
+    isPositionControlledByOpponentDiagonals(position, opponent) {
+        const diagonalNeighbors = [
+            { row: position.row - 1, col: position.col - 1 },
+            { row: position.row - 1, col: position.col + 1 },
+            { row: position.row + 1, col: position.col - 1 },
+            { row: position.row + 1, col: position.col + 1 }
+        ];
+        
+        let opponentDiagonals = 0;
+        for (const neighbor of diagonalNeighbors) {
+            if (this.gameCore.isValidPosition(neighbor.row, neighbor.col) &&
+                this.gameCore.board[neighbor.row][neighbor.col] === opponent) {
+                opponentDiagonals++;
+            }
+        }
+        
+        return opponentDiagonals >= 2;
+    }
+
+    // ===== SURROUNDING DETECTION =====
+    
+    /**
+     * Check if gap is surrounded by opponent pieces
+     */
+    isSurroundedByOpponent(gap, opponent) {
+        if (!gap || !this.gameCore.isValidPosition(gap.row, gap.col)) {
+            return false;
+        }
+        
+        const neighbors = this.getNeighbors(gap.row, gap.col);
+        let opponentCount = 0;
+        let validNeighbors = 0;
+        
+        for (const neighbor of neighbors) {
+            if (this.gameCore.isValidPosition(neighbor.row, neighbor.col)) {
+                validNeighbors++;
+                if (this.gameCore.board[neighbor.row][neighbor.col] === opponent) {
+                    opponentCount++;
+                }
+            }
+        }
+        
+        return validNeighbors > 0 && (opponentCount / validNeighbors) > 0.6;
+    }
+
+    // ===== GEOMETRIC HELPER METHODS =====
+    
+    getLPatternDiagonals(gap, piece1, piece2) {
+        const diagonals = [];
+        
+        if (this.areDiagonallyAdjacent(gap, piece1)) {
+            diagonals.push({ from: gap, to: piece1 });
+        }
+        if (this.areDiagonallyAdjacent(gap, piece2)) {
+            diagonals.push({ from: gap, to: piece2 });
+        }
+        
+        return diagonals;
+    }
+
+    areDiagonallyAdjacent(pos1, pos2) {
+        const rowDiff = Math.abs(pos1.row - pos2.row);
+        const colDiff = Math.abs(pos1.col - pos2.col);
+        return rowDiff === 1 && colDiff === 1;
+    }
+
+    getBlockingPositions(from, to) {
+        const blockingPos = [];
+        const rowDiff = to.row - from.row;
+        const colDiff = to.col - from.col;
+        
+        if (Math.abs(rowDiff) === Math.abs(colDiff)) {
+            const stepRow = rowDiff > 0 ? 1 : -1;
+            const stepCol = colDiff > 0 ? 1 : -1;
+            
+            for (let i = 1; i < Math.abs(rowDiff); i++) {
+                blockingPos.push({
+                    row: from.row + i * stepRow,
+                    col: from.col + i * stepCol
+                });
+            }
+        }
+        
+        return blockingPos;
+    }
+
+    getConnectionLine(piece1, piece2) {
+        return {
+            from: piece1,
+            to: piece2,
+            type: piece1.row === piece2.row ? 'horizontal' : 'vertical'
+        };
+    }
+
+    findCrossingDiagonals(connectionLine, opponent) {
+        const crossingDiagonals = [];
+        const { from, to } = connectionLine;
+        
+        for (let row = 0; row < this.gameCore.size; row++) {
+            for (let col = 0; col < this.gameCore.size; col++) {
+                if (this.gameCore.board[row][col] === opponent) {
+                    if (this.doesPieceCrossConnection(from, to, { row, col })) {
+                        crossingDiagonals.push({ row, col });
+                    }
+                }
+            }
+        }
+        
+        return crossingDiagonals;
+    }
+
+    doesPieceCrossConnection(from, to, opponentPiece) {
+        if (from.row === to.row) {
+            // Horizontal connection
+            return opponentPiece.row !== from.row &&
+                   opponentPiece.col > Math.min(from.col, to.col) && 
+                   opponentPiece.col < Math.max(from.col, to.col);
+        } else if (from.col === to.col) {
+            // Vertical connection
+            return opponentPiece.col !== from.col &&
+                   opponentPiece.row > Math.min(from.row, to.row) && 
+                   opponentPiece.row < Math.max(from.row, to.row);
+        }
+        
+        return false;
+    }
+
+    getNeighbors(row, col) {
+        const neighbors = [];
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                neighbors.push({ row: row + dr, col: col + dc });
+            }
+        }
+        return neighbors;
+    }
+
+    // ===== CACHE MANAGEMENT =====
+    
+    invalidateCache() {
+        this.blockingCache.clear();
+        this.lastCheckedMove = this.gameCore.moveCount || 0;
+        this.log('🗑️ Gap blocking cache invalidated');
+    }
+
     getBlockingStats() {
         return {
-            cachedResults: this.blockedGaps.size,
+            cachedResults: this.blockingCache.size,
             lastCheckedMove: this.lastCheckedMove,
             currentMove: this.gameCore.moveCount || 0,
-            cacheValid: this.lastCheckedMove === (this.gameCore.moveCount || 0)
+            hasDiagonalLines: !!this.diagonalLinesManager
         };
+    }
+
+    // ===== DEBUGGING =====
+    
+    setDebugMode(enabled) {
+        this.debugMode = enabled;
+        this.log(`Debug mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
     }
 
     log(message) {
@@ -454,60 +492,11 @@ class GapBlockingDetector {
     }
 }
 
-// Integration helper for Gap Registry
-class GapRegistryBlockingIntegration {
-    constructor(gapRegistry, blockingDetector) {
-        this.gapRegistry = gapRegistry;
-        this.blockingDetector = blockingDetector;
-        
-        // Override gap registry methods to include blocking checks
-        this.integrateWithGapRegistry();
-        
-        console.log('🔗 Gap Registry integrated with blocking detection');
-    }
-    
-    integrateWithGapRegistry() {
-        // Store original methods
-        const originalGetThreatenedGaps = this.gapRegistry.getThreatenedGapsByType.bind(this.gapRegistry);
-        const originalGetUnthreatenedGaps = this.gapRegistry.getUnthreatenedGapsByType.bind(this.gapRegistry);
-        
-        // Override with blocking-aware versions
-        this.gapRegistry.getThreatenedGapsByType = (ownershipType) => {
-            const gaps = originalGetThreatenedGaps(ownershipType);
-            const player = ownershipType.split('-')[0]; // Extract player from 'X-X' or 'O-O'
-            
-            const filtered = this.blockingDetector.filterBlockedGaps(gaps, player);
-            return filtered.validGaps;
-        };
-        
-        this.gapRegistry.getUnthreatenedGapsByType = (ownershipType) => {
-            const gaps = originalGetUnthreatenedGaps(ownershipType);
-            const player = ownershipType.split('-')[0]; // Extract player from 'X-X' or 'O-O'
-            
-            const filtered = this.blockingDetector.filterBlockedGaps(gaps, player);
-            return filtered.validGaps;
-        };
-        
-        // Override opponent attack methods
-        const originalGetOpponentVulnerableGaps = this.gapRegistry.getOpponentVulnerableGaps.bind(this.gapRegistry);
-        
-        this.gapRegistry.getOpponentVulnerableGaps = () => {
-            const gaps = originalGetOpponentVulnerableGaps();
-            const opponent = this.gapRegistry.aiPlayer === 'X' ? 'O' : 'X';
-            
-            const filtered = this.blockingDetector.filterBlockedGaps(gaps, opponent);
-            return filtered.validGaps;
-        };
-    }
-}
-
 // Export for browser
 if (typeof window !== 'undefined') {
     window.GapBlockingDetector = GapBlockingDetector;
-    window.GapRegistryBlockingIntegration = GapRegistryBlockingIntegration;
+    console.log('✅ COMPLETE Gap Blocking Detector loaded');
+    console.log('   🎯 API: Gap blocking + Pattern blocking');
+    console.log('   🔗 Integration: Gap Registry, Gap Analyzer, Pattern Detector');
+    console.log('   ⚡ Methods: filterBlockedGaps(), checkPatternBlockingAfterMove()');
 }
-
-console.log('✅ Gap Blocking Detection System loaded');
-console.log('🚧 Features: Diagonal blocking, I-pattern cross detection, L-pattern surrounding');
-console.log('🔗 Integration: Filters blocked gaps from registry automatically');
-console.log('🎯 Purpose: Prevent attacking impossible gaps blocked by opponent diagonal lines');

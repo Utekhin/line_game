@@ -1,5 +1,6 @@
-// ai-vs-h-game-core.js - FRAGMENT-AWARE: Connection Game Core with Row-by-Row Win Detection
-// UPDATED: Enhanced with new traversal-based win detection that works seamlessly with fragments
+// ai-vs-h-game-core.js - Complete Updated Version with Player-Independent Win Detection
+// Connection Game Core with clean, reliable win detection for both X and O players
+// Version: 2.0 - Production Ready
 
 class ConnectionGameCore {
     constructor(size = 15) {
@@ -11,19 +12,29 @@ class ConnectionGameCore {
         this.moveCount = 0;
         this.lastMove = null;
         
+        // Module dependencies (injected during initialization)
+        this.geometry = null;
+        this.connections = null;
+        this.patterns = null;
+        this.analyzer = null;
+        
         // System integrations
         this.gapRegistry = null;
         this.diagonalLinesManager = null;
         
-        // Fragment-aware settings
-        this.fragmentAnalysisEnabled = true;
-        this.winDetectionMethod = 'row-traversal'; // 'row-traversal' or 'legacy'
+        // Core settings
+        this.settings = {
+            minMovesForWin: 29, // Earliest possible win (X needs 15 pieces on odd moves)
+            enableDebugLogging: false,
+            enableWinDetection: true
+        };
         
         this.initializeBoard();
-        console.log(`🎮 Fragment-Aware Connection Game Core initialized (${size}x${size})`);
+        console.log(`🎮 Connection Game Core v2.0 initialized (${size}x${size})`);
+        console.log(`🎯 Player-independent win detection enabled`);
     }
 
-    // ===== BOARD INITIALIZATION =====
+    // ===== BOARD INITIALIZATION & MANAGEMENT =====
     
     initializeBoard() {
         this.board = [];
@@ -33,6 +44,7 @@ class ConnectionGameCore {
                 this.board[row][col] = '';
             }
         }
+        this.log(`📋 Board initialized (${this.size}x${this.size})`);
     }
 
     resetGame(newSize = null) {
@@ -56,56 +68,57 @@ class ConnectionGameCore {
             this.diagonalLinesManager.clear();
         }
         
-        console.log(`🔄 Game reset (${this.size}x${this.size}) - Fragment analysis: ${this.fragmentAnalysisEnabled ? 'ON' : 'OFF'}`);
+        console.log(`🔄 Game reset (${this.size}x${this.size})`);
     }
 
-    // ===== SYSTEM INTEGRATION =====
+    // ===== MODULE INTEGRATION =====
+    
+    /**
+     * Connect universal modules for enhanced functionality
+     */
+    initializeModules(geometry, connections, patterns, analyzer) {
+        this.geometry = geometry;
+        this.connections = connections;
+        this.patterns = patterns;
+        this.analyzer = analyzer;
+        
+        const hasModules = this.hasModules();
+        if (hasModules) {
+            console.log('🔗 Universal modules connected successfully');
+        } else {
+            console.warn('⚠️ Some modules not available - using fallback methods');
+        }
+        
+        return { success: hasModules };
+    }
+    
+    hasModules() {
+        return !!(this.geometry && this.connections);
+    }
     
     setGapRegistry(gapRegistry) {
         this.gapRegistry = gapRegistry;
-        console.log('🔗 Gap registry connected to fragment-aware game core');
+        console.log('🔗 Gap registry connected to game core');
     }
     
     setDiagonalLinesManager(diagonalLinesManager) {
         this.diagonalLinesManager = diagonalLinesManager;
-        console.log('🔗 Diagonal lines manager connected to fragment-aware game core');
+        console.log('🔗 Diagonal lines manager connected to game core');
     }
 
     // ===== MOVE HANDLING =====
     
     makeMove(row, col, player) {
+        console.log(`🎯 Attempting move: ${player} at (${row},${col})`);
+        
         // Validation
-        if (!this.isValidMove(row, col)) {
-            return {
-                success: false,
-                reason: 'Invalid move position',
-                row: row,
-                col: col,
-                player: player
-            };
+        const validationResult = this.validateMove(row, col, player);
+        if (!validationResult.success) {
+            console.log(`❌ Move validation failed: ${validationResult.reason}`);
+            return validationResult;
         }
 
-        if (this.gameOver) {
-            return {
-                success: false,
-                reason: 'Game is already over',
-                row: row,
-                col: col,
-                player: player
-            };
-        }
-
-        if (player !== this.currentPlayer) {
-            return {
-                success: false,
-                reason: `Not ${player}'s turn (current: ${this.currentPlayer})`,
-                row: row,
-                col: col,
-                player: player
-            };
-        }
-
-        // Make the move
+        // Execute the move
         this.board[row][col] = player;
         this.moveCount++;
         this.lastMove = { row, col, player, moveNumber: this.moveCount };
@@ -119,18 +132,16 @@ class ConnectionGameCore {
             timestamp: Date.now()
         });
 
-        // Update gap registry if connected
-        if (this.gapRegistry && typeof this.gapRegistry.updateGapStatus === 'function') {
-            this.gapRegistry.updateGapStatus(row, col, player);
-        }
+        this.log(`✅ Move ${this.moveCount}: ${player} → (${row},${col})`);
 
-        // Update diagonal lines if connected
-        if (this.diagonalLinesManager && typeof this.diagonalLinesManager.updateDiagonalLines === 'function') {
-            setTimeout(() => this.diagonalLinesManager.updateDiagonalLines(), 10);
-        }
+        // Update connected systems
+        this.updateSystemsAfterMove(row, col, player);
 
-        // Check for win condition using the enhanced method
-        const winResult = this.checkWin(player);
+        // Check for win condition
+        const winResult = this.settings.enableWinDetection ? 
+            this.checkWin(player) : 
+            { isWin: false, reason: 'Win detection disabled' };
+        
         let gameOver = false;
         let winner = null;
 
@@ -138,7 +149,10 @@ class ConnectionGameCore {
             this.gameOver = true;
             gameOver = true;
             winner = player;
-            console.log(`🎉 ${player} wins! ${winResult.reason}`);
+            console.log(`🎉 ${player} WINS! ${winResult.reason}`);
+            if (winResult.path) {
+                console.log(`📊 Winning path: ${winResult.path.length} connected pieces`);
+            }
         }
 
         // Switch players
@@ -155,635 +169,586 @@ class ConnectionGameCore {
             moveNumber: this.moveCount
         };
     }
-
-    // ===== VALIDATION =====
     
-    isValidPosition(row, col) {
-        return row >= 0 && row < this.size && col >= 0 && col < this.size;
-    }
-
-    isValidMove(row, col) {
+    validateMove(row, col, player) {
+        // Check position validity
         if (!this.isValidPosition(row, col)) {
-            return false;
+            return { 
+                success: false, 
+                reason: 'Position out of bounds',
+                row: row,
+                col: col,
+                player: player 
+            };
         }
-        
-        if (this.board[row][col] !== '') {
-            return false;
-        }
-        
-        return true;
-    }
 
-    // ===== ENHANCED WIN DETECTION - ROW-BY-ROW TRAVERSAL =====
+        // Check if position is occupied
+        if (this.board[row][col] !== '') {
+            return { 
+                success: false, 
+                reason: 'Position already occupied',
+                row: row,
+                col: col,
+                player: player 
+            };
+        }
+
+        // Check if game is over
+        if (this.gameOver) {
+            return { 
+                success: false, 
+                reason: 'Game is already over',
+                row: row,
+                col: col,
+                player: player 
+            };
+        }
+
+        // Check if it's the player's turn
+        if (player !== this.currentPlayer) {
+            return { 
+                success: false, 
+                reason: `Not ${player}'s turn (current: ${this.currentPlayer})`,
+                row: row,
+                col: col,
+                player: player 
+            };
+        }
+
+        return { success: true };
+    }
+    
+    updateSystemsAfterMove(row, col, player) {
+        // Update gap registry
+        if (this.gapRegistry && typeof this.gapRegistry.updateGapStatus === 'function') {
+            try {
+                this.gapRegistry.updateGapStatus(row, col, player);
+            } catch (error) {
+                console.warn(`⚠️ Gap registry update failed: ${error.message}`);
+            }
+        }
+
+        // Update diagonal lines
+        if (this.diagonalLinesManager && typeof this.diagonalLinesManager.updateDiagonalLines === 'function') {
+            try {
+                setTimeout(() => this.diagonalLinesManager.updateDiagonalLines(), 10);
+            } catch (error) {
+                console.warn(`⚠️ Diagonal lines update failed: ${error.message}`);
+            }
+        }
+
+        // Invalidate module caches
+        if (this.connections) {
+            this.connections.invalidateCache && this.connections.invalidateCache();
+        }
+        if (this.patterns) {
+            this.patterns.invalidateCache && this.patterns.invalidateCache();
+        }
+        if (this.analyzer) {
+            this.analyzer.invalidateCache && this.analyzer.invalidateCache();
+        }
+    }
+//=====
+
+wouldMoveCrossOpponentDiagonal(fromPos, toPos, player) {
+    const opponent = player === 'X' ? 'O' : 'X';
+    
+    // Get all existing opponent diagonal connections
+    const opponentDiagonals = this.getExistingDiagonalConnections(opponent);
+    
+    // Check if the line from fromPos to toPos would cross any opponent diagonal
+    for (const diagonal of opponentDiagonals) {
+        if (this.doLinesIntersect(fromPos, toPos, diagonal.pos1, diagonal.pos2)) {
+            this.log(`Chain extension from (${fromPos.row},${fromPos.col}) to (${toPos.row},${toPos.col}) would cross ${opponent} diagonal`);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Get existing diagonal connections for a player
+ */
+getExistingDiagonalConnections(player) {
+    const diagonals = [];
+    
+    for (let row = 0; row < this.size; row++) {
+        for (let col = 0; col < this.size; col++) {
+            if (this.board[row][col] === player) {
+                // Check diagonal directions
+                const diagonalDirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+                
+                for (const [dr, dc] of diagonalDirs) {
+                    const newRow = row + dr;
+                    const newCol = col + dc;
+                    
+                    if (this.isValidPosition(newRow, newCol) && 
+                        this.board[newRow][newCol] === player) {
+                        
+                        const pos1 = { row, col };
+                        const pos2 = { row: newRow, col: newCol };
+                        
+                        // Only include if this diagonal was established first (timing check)
+                        if (!this.isDiagonalBlockedByTiming(pos1, pos2, player)) {
+                            // Avoid duplicates - only add if pos1 comes before pos2 in grid order
+                            if (row < newRow || (row === newRow && col < newCol)) {
+                                diagonals.push({ pos1, pos2, player });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return diagonals;
+}
+
+/**
+ * Check if diagonal is blocked by timing (who was first)
+ */
+isDiagonalBlockedByTiming(pos1, pos2, player) {
+    const opponent = player === 'X' ? 'O' : 'X';
+    
+    // Check crossing cells for opponent diagonal
+    const crossCell1 = { row: pos1.row, col: pos2.col };
+    const crossCell2 = { row: pos2.row, col: pos1.col };
+    
+    const hasCross1 = this.board[crossCell1.row] && 
+                     this.board[crossCell1.row][crossCell1.col] === opponent;
+    const hasCross2 = this.board[crossCell2.row] && 
+                     this.board[crossCell2.row][crossCell2.col] === opponent;
+    
+    if (hasCross1 && hasCross2) {
+        // Check timing using existing method
+        if (typeof this.checkDiagonalTimingPriority === 'function') {
+            const timingResult = this.checkDiagonalTimingPriority(pos1, pos2, crossCell1, crossCell2, opponent);
+            return timingResult.opponentFirst;
+        }
+    }
+    
+    return false; // If no crossing or timing check unavailable, allow diagonal
+}
+
+/**
+ * Check if two lines intersect (simplified for chain extension checking)
+ */
+doLinesIntersect(line1Start, line1End, line2Start, line2End) {
+    // Simplified intersection check for chain extension paths crossing diagonals
+    
+    // Get all points along both lines
+    const line1Path = this.getPathBetweenPoints(line1Start, line1End);
+    const line2Path = this.getPathBetweenPoints(line2Start, line2End);
+    
+    // Check if any points intersect
+    for (const point1 of line1Path) {
+        for (const point2 of line2Path) {
+            if (point1.row === point2.row && point1.col === point2.col) {
+                return true; // Lines intersect at this point
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Get path between two points (for intersection checking)
+ */
+getPathBetweenPoints(start, end) {
+    const path = [];
+    const rowDiff = end.row - start.row;
+    const colDiff = end.col - start.col;
+    const steps = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
+    
+    if (steps === 0) {
+        return [start];
+    }
+    
+    const rowStep = rowDiff / steps;
+    const colStep = colDiff / steps;
+    
+    for (let i = 0; i <= steps; i++) {
+        path.push({
+            row: Math.round(start.row + i * rowStep),
+            col: Math.round(start.col + i * colStep)
+        });
+    }
+    
+    return path;
+}
+
+    // ===== PLAYER-INDEPENDENT WIN DETECTION =====
     
     /**
-     * MAIN WIN DETECTION METHOD - Enhanced for Fragment Awareness
-     * Uses row-by-row traversal for cleaner, more intuitive win validation
+     * Main win detection method - works for both X and O players
+     * @param {string} player - 'X' or 'O'
+     * @returns {object} - { isWin: boolean, reason: string, path?: array }
      */
     checkWin(player) {
         const moveNumber = this.gameHistory.length;
-        this.log(`🏆 Checking win for ${player} (move ${moveNumber}) - Enhanced Fragment-Aware Method...`);
         
-        // SAFETY: Win check disabled until move 29
-        if (moveNumber < 29) {
-            this.log(`🚫 Win check disabled (move ${moveNumber} < 29)`);
-            return { isWin: false, reason: 'Win check disabled (early game)' };
+        // Step 1: Check if minimum moves reached
+        if (moveNumber < this.settings.minMovesForWin) {
+            this.log(`🚫 Win check disabled (move ${moveNumber} < ${this.settings.minMovesForWin})`);
+            return { 
+                isWin: false, 
+                reason: `Too early (move ${moveNumber}/${this.settings.minMovesForWin})` 
+            };
         }
         
-        this.log(`✅ Win check enabled (move ${moveNumber} >= 29)`);
+        this.log(`🏆 Checking win for ${player} at move ${moveNumber}...`);
         
-        // Get player pieces
-        const playerPositions = this.getPlayerPositions(player);
-        if (playerPositions.length === 0) {
-            this.log(`❌ ${player} - No pieces on board`);
+        // Step 2: Get all player positions
+        const positions = this.getPlayerPositions(player);
+        if (positions.length === 0) {
             return { isWin: false, reason: 'No pieces on board' };
         }
         
-        // Enhanced approach: Row-by-row traversal validation with fragment awareness
-        const traversalResult = this.checkWinByRowTraversal(player, playerPositions);
+        const isX = player === 'X';
         
-        if (traversalResult.isWin) {
-            this.log(`🎉 ${player} - ROW TRAVERSAL WIN CONFIRMED!`);
+        // Step 3: Check border presence (both borders required)
+        const borderCheck = this.checkBorderPresence(positions, isX);
+        if (!borderCheck.hasBothBorders) {
+            this.log(`❌ Missing border connection: ${borderCheck.reason}`);
+            return { 
+                isWin: false, 
+                reason: borderCheck.reason 
+            };
+        }
+        
+        // Step 4: Check complete coverage (all rows for X, all columns for O)
+        const coverageCheck = this.checkCompleteCoverage(positions, isX);
+        if (!coverageCheck.hasCompleteCoverage) {
+            this.log(`❌ Incomplete coverage: ${coverageCheck.reason}`);
+            return { 
+                isWin: false, 
+                reason: coverageCheck.reason 
+            };
+        }
+        
+        // Step 5: Find connected path from border to border
+        const pathResult = this.findConnectedBorderPath(positions, player, isX);
+        
+        if (pathResult.hasPath) {
+            this.log(`✅ WIN CONFIRMED! ${pathResult.reason}`);
             return {
                 isWin: true,
-                reason: `${player} completed connection via row traversal!`,
-                method: 'enhanced-row-traversal',
-                traversalData: traversalResult
+                reason: pathResult.reason,
+                path: pathResult.path,
+                pathLength: pathResult.path.length
             };
         } else {
-            this.log(`❌ ${player} - Row traversal failed: ${traversalResult.reason}`);
+            this.log(`❌ No connected path: ${pathResult.reason}`);
             return {
                 isWin: false,
-                reason: traversalResult.reason,
-                method: 'enhanced-row-traversal',
-                traversalData: traversalResult
+                reason: pathResult.reason
             };
         }
     }
-
-    /**
-     * ENHANCED: Row-by-Row Traversal Win Detection with Fragment Support
-     * Validates winning connection by traversing from border to border, row by row
-     */
-    checkWinByRowTraversal(player, playerPositions) {
-        this.log(`🎯 Starting enhanced row-by-row traversal validation for ${player}...`);
-        
-        // Step 1: Organize pieces by rows/columns for efficient lookup
-        const piecesByPosition = this.organizePiecesByPosition(player, playerPositions);
-        
-        // Step 2: Find starting border pieces
-        const startingBorderPieces = this.findBorderStartingPoints(player, playerPositions);
-        
-        if (startingBorderPieces.length === 0) {
-            return {
-                isWin: false,
-                reason: `No pieces found at starting border (${player === 'X' ? 'row 0' : 'col 0'})`,
-                startingBorderPieces: 0
-            };
-        }
-        
-        this.log(`🎯 Found ${startingBorderPieces.length} starting border pieces for ${player}`);
-        
-        // Step 3: Try to trace a complete path from each starting piece
-        for (const startingPiece of startingBorderPieces) {
-            this.log(`🔍 Testing path from border piece (${startingPiece.row},${startingPiece.col})...`);
-            
-            const pathResult = this.traceRowByRowPath(player, startingPiece, piecesByPosition);
-            
-            if (pathResult.isComplete) {
-                this.log(`✅ Complete path found from (${startingPiece.row},${startingPiece.col})!`);
-                
-                // Step 4: Verify coverage (all rows/columns touched)
-                const coverageResult = this.verifyCoverageFromPath(player, pathResult.fullPath);
-                
-                if (coverageResult.isComplete) {
-                    this.log(`✅ Full coverage verified - ${player} WINS!`);
-                    return {
-                        isWin: true,
-                        reason: 'Complete row-by-row connection with full coverage',
-                        startingPiece: startingPiece,
-                        winningPath: pathResult.fullPath,
-                        pathLength: pathResult.fullPath.length,
-                        coverage: coverageResult,
-                        method: 'enhanced-row-traversal'
-                    };
-                } else {
-                    this.log(`❌ Path complete but coverage incomplete: ${coverageResult.reason}`);
-                }
-            } else {
-                this.log(`❌ Path incomplete from (${startingPiece.row},${startingPiece.col}): ${pathResult.reason}`);
-            }
-        }
-        
-        return {
-            isWin: false,
-            reason: 'No complete row-by-row path found from any starting border piece',
-            startingBorderPieces: startingBorderPieces.length,
-            method: 'enhanced-row-traversal'
-        };
-    }
-
-    /**
-     * Organize pieces by position for efficient lookup during traversal
-     */
-    organizePiecesByPosition(player, playerPositions) {
-        const byRow = {}; // byRow[row] = array of pieces in that row
-        const byCol = {}; // byCol[col] = array of pieces in that column  
-        const positionSet = new Set(); // Set of "row-col" strings for fast lookup
-        
-        playerPositions.forEach(piece => {
-            // Organize by row
-            if (!byRow[piece.row]) byRow[piece.row] = [];
-            byRow[piece.row].push(piece);
-            
-            // Organize by column  
-            if (!byCol[piece.col]) byCol[piece.col] = [];
-            byCol[piece.col].push(piece);
-            
-            // Position set for fast lookup
-            positionSet.add(`${piece.row}-${piece.col}`);
-        });
-        
-        // Sort pieces in each row/column by position
-        Object.values(byRow).forEach(pieces => {
-            pieces.sort((a, b) => a.col - b.col);
-        });
-        Object.values(byCol).forEach(pieces => {
-            pieces.sort((a, b) => a.row - b.row);
-        });
-        
-        this.log(`📊 Organized ${playerPositions.length} pieces: ${Object.keys(byRow).length} rows, ${Object.keys(byCol).length} columns`);
-        
-        return {
-            byRow: byRow,
-            byCol: byCol,
-            positionSet: positionSet,
-            totalPieces: playerPositions.length
-        };
-    }
-
-    /**
-     * Find all pieces on the starting border for the player
-     */
-    findBorderStartingPoints(player, playerPositions) {
-        if (player === 'X') {
-            // X starts from top border (row 0)
-            const topBorderPieces = playerPositions.filter(p => p.row === 0);
-            this.log(`🎯 X starting points: ${topBorderPieces.length} pieces on row 0`);
-            return topBorderPieces;
-        } else {
-            // O starts from left border (col 0)  
-            const leftBorderPieces = playerPositions.filter(p => p.col === 0);
-            this.log(`🎯 O starting points: ${leftBorderPieces.length} pieces on col 0`);
-            return leftBorderPieces;
-        }
-    }
-
-    /**
-     * CORE METHOD: Trace a row-by-row path from starting piece to target border
-     */
-    traceRowByRowPath(player, startingPiece, piecesByPosition) {
-        this.log(`🔍 Tracing enhanced row-by-row path for ${player} from (${startingPiece.row},${startingPiece.col})...`);
-        
-        const fullPath = [startingPiece];
-        let currentRow = startingPiece.row;
-        let currentCol = startingPiece.col;
-        let currentRowPieces = [startingPiece]; // Pieces we can continue from in current row
-        
-        // Determine traversal direction and target
-        let targetBorder, rowIncrement, maxIterations;
-        
-        if (player === 'X') {
-            // X: traverse from row 0 to row 14 (top to bottom)
-            targetBorder = this.size - 1; // row 14
-            rowIncrement = 1;
-            maxIterations = this.size; // max 15 iterations
-            this.log(`🎯 X traversal: row 0 → row ${targetBorder}`);
-        } else {
-            // O: traverse from col 0 to col 14 (left to right)
-            targetBorder = this.size - 1; // col 14  
-            rowIncrement = 1; // actually col increment for O
-            maxIterations = this.size; // max 15 iterations
-            this.log(`🎯 O traversal: col 0 → col ${targetBorder}`);
-        }
-        
-        // Row-by-row traversal loop
-        for (let iteration = 0; iteration < maxIterations; iteration++) {
-            // Calculate next position based on player direction
-            let nextPosition;
-            if (player === 'X') {
-                nextPosition = currentRow + rowIncrement; // next row
-                if (nextPosition > targetBorder) break; // reached target
-            } else {
-                nextPosition = currentCol + rowIncrement; // next column  
-                if (nextPosition > targetBorder) break; // reached target
-            }
-            
-            this.log(`🔄 Iteration ${iteration + 1}: Looking for connections to ${player === 'X' ? 'row' : 'col'} ${nextPosition}`);
-            
-            // Find all possible connections from current row pieces to next row/col
-            const nextRowPieces = this.findConnectedPiecesInNextPosition(
-                player, 
-                currentRowPieces, 
-                nextPosition, 
-                piecesByPosition
-            );
-            
-            if (nextRowPieces.length === 0) {
-                this.log(`❌ No connections found to ${player === 'X' ? 'row' : 'col'} ${nextPosition}`);
-                return {
-                    isComplete: false,
-                    reason: `Path broken at ${player === 'X' ? 'row' : 'col'} ${nextPosition} - no valid connections`,
-                    fullPath: fullPath,
-                    stoppedAt: nextPosition
-                };
-            }
-            
-            this.log(`✅ Found ${nextRowPieces.length} connected pieces in ${player === 'X' ? 'row' : 'col'} ${nextPosition}`);
-            
-            // Add new pieces to path and update current position
-            fullPath.push(...nextRowPieces);
-            currentRowPieces = nextRowPieces;
-            
-            if (player === 'X') {
-                currentRow = nextPosition;
-            } else {
-                currentCol = nextPosition;
-            }
-            
-            // Check if we've reached the target border
-            const hasReachedTarget = (player === 'X') ? 
-                (nextPosition === targetBorder) : 
-                (nextPosition === targetBorder);
-                
-            if (hasReachedTarget) {
-                this.log(`🎉 Reached target border ${player === 'X' ? 'row' : 'col'} ${targetBorder}!`);
-                break;
-            }
-        }
-        
-        // Verify we actually reached the target
-        const finalPosition = (player === 'X') ? currentRow : currentCol;
-        const reachedTarget = (finalPosition === targetBorder);
-        
-        if (reachedTarget) {
-            this.log(`✅ Complete path traced: ${fullPath.length} pieces from border to border`);
-            return {
-                isComplete: true,
-                reason: `Complete ${player === 'X' ? 'vertical' : 'horizontal'} path found`,
-                fullPath: fullPath,
-                pathLength: fullPath.length,
-                finalPosition: finalPosition
-            };
-        } else {
-            this.log(`❌ Path incomplete: stopped at ${player === 'X' ? 'row' : 'col'} ${finalPosition}, target was ${targetBorder}`);
-            return {
-                isComplete: false,
-                reason: `Path incomplete: reached ${player === 'X' ? 'row' : 'col'} ${finalPosition}, needed ${targetBorder}`,
-                fullPath: fullPath,
-                stoppedAt: finalPosition
-            };
-        }
-    }
-
-    /**
-     * Find all pieces in next row/column that connect to any piece in current row/column
-     */
-    findConnectedPiecesInNextPosition(player, currentPieces, nextPosition, piecesByPosition) {
-        const connectedPieces = [];
-        
-        // Get all pieces at the next position (row or column depending on player)
-        let candidatePieces;
-        if (player === 'X') {
-            // For X, nextPosition is a row number
-            candidatePieces = piecesByPosition.byRow[nextPosition] || [];
-        } else {
-            // For O, nextPosition is a column number
-            candidatePieces = piecesByPosition.byCol[nextPosition] || [];
-        }
-        
-        this.log(`🔍 Checking connections between ${currentPieces.length} current pieces and ${candidatePieces.length} candidate pieces`);
-        
-        // Check each candidate piece for connections to any current piece
-        for (const candidatePiece of candidatePieces) {
-            let isConnected = false;
-            
-            for (const currentPiece of currentPieces) {
-                if (this.arePiecesAdjacent(currentPiece, candidatePiece)) {
-                    // Found a connection - validate it's not blocked by opponent
-                    const connectionValid = this.validateConnection(currentPiece, candidatePiece, player);
-                    
-                    if (connectionValid.isValid) {
-                        isConnected = true;
-                        this.log(`✅ Valid connection: (${currentPiece.row},${currentPiece.col}) ↔ (${candidatePiece.row},${candidatePiece.col}) [${connectionValid.type}]`);
-                        break; // Found at least one valid connection
-                    } else {
-                        this.log(`🚫 Connection blocked: (${currentPiece.row},${currentPiece.col}) ↔ (${candidatePiece.row},${candidatePiece.col}) - ${connectionValid.reason}`);
-                    }
-                }
-            }
-            
-            if (isConnected) {
-                connectedPieces.push(candidatePiece);
-            }
-        }
-        
-        this.log(`🔗 Found ${connectedPieces.length} valid connections to ${player === 'X' ? 'row' : 'col'} ${nextPosition}`);
-        return connectedPieces;
-    }
-
-    /**
-     * Check if two pieces are adjacent (lateral or diagonal)
-     */
-    arePiecesAdjacent(piece1, piece2) {
-        const dr = Math.abs(piece2.row - piece1.row);
-        const dc = Math.abs(piece2.col - piece1.col);
-        
-        // Adjacent if distance is 1 in both directions and at least one direction has distance 1
-        return (dr <= 1 && dc <= 1 && (dr > 0 || dc > 0));
-    }
-
-    /**
-     * ENHANCED: Validate that a connection between two pieces is not blocked by opponent
-     */
-    validateConnection(piece1, piece2, player) {
-        const dr = Math.abs(piece2.row - piece1.row);
-        const dc = Math.abs(piece2.col - piece1.col);
-        
-        // Lateral connections (horizontal/vertical) are never blocked
-        if (dr === 0 || dc === 0) {
-            return {
-                isValid: true,
-                type: 'lateral',
-                reason: 'Lateral connections cannot be blocked'
-            };
-        }
-        
-        // Diagonal connections need to be checked for opponent blocking
-        if (dr === 1 && dc === 1) {
-            // Get opponent diagonal blocking lines
-            const opponent = player === 'X' ? 'O' : 'X';
-            const blockingLines = this.getOpponentDiagonalBlocks(opponent);
-            
-            // Check if this diagonal is blocked
-            const isBlocked = this.isConnectionBlocked(piece1, piece2, blockingLines);
-            
-            if (isBlocked) {
-                return {
-                    isValid: false,
-                    type: 'diagonal-blocked',
-                    reason: 'Diagonal connection blocked by opponent'
-                };
-            } else {
-                return {
-                    isValid: true,
-                    type: 'diagonal',
-                    reason: 'Diagonal connection clear'
-                };
-            }
-        }
-        
-        // Should not reach here for adjacent pieces
-        return {
-            isValid: false,
-            type: 'invalid',
-            reason: `Invalid adjacency: dr=${dr}, dc=${dc}`
-        };
-    }
-
-    /**
-     * Verify that the traced path provides complete coverage
-     */
-    verifyCoverageFromPath(player, pathPieces) {
-        if (player === 'X') {
-            // X needs coverage of all rows (0 to size-1)
-            const coveredRows = new Set(pathPieces.map(p => p.row));
-            const requiredRows = this.size;
-            
-            this.log(`📊 X path coverage: ${coveredRows.size}/${requiredRows} rows`);
-            
-            if (coveredRows.size === requiredRows) {
-                return {
-                    isComplete: true,
-                    coveredRows: Array.from(coveredRows).sort((a,b) => a-b)
-                };
-            } else {
-                const missingRows = [];
-                for (let row = 0; row < this.size; row++) {
-                    if (!coveredRows.has(row)) {
-                        missingRows.push(row);
-                    }
-                }
-                return {
-                    isComplete: false,
-                    reason: `Missing rows: [${missingRows.join(', ')}]`,
-                    missingRows: missingRows
-                };
-            }
-        } else {
-            // O needs coverage of all columns (0 to size-1)
-            const coveredCols = new Set(pathPieces.map(p => p.col));
-            const requiredCols = this.size;
-            
-            this.log(`📊 O path coverage: ${coveredCols.size}/${requiredCols} columns`);
-            
-            if (coveredCols.size === requiredCols) {
-                return {
-                    isComplete: true,
-                    coveredCols: Array.from(coveredCols).sort((a,b) => a-b)
-                };
-            } else {
-                const missingCols = [];
-                for (let col = 0; col < this.size; col++) {
-                    if (!coveredCols.has(col)) {
-                        missingCols.push(col);
-                    }
-                }
-                return {
-                    isComplete: false,
-                    reason: `Missing columns: [${missingCols.join(', ')}]`,
-                    missingCols: missingCols
-                };
-            }
-        }
-    }
-
-    // ===== DIAGONAL BLOCKING LOGIC (REUSED FROM EXISTING CODE) =====
     
     /**
-     * Get opponent diagonal lines that could block connections
+     * Check if player has pieces on both target borders
      */
-    getOpponentDiagonalBlocks(opponentPlayer) {
-        const blockingLines = [];
+    checkBorderPresence(positions, isX) {
+        let startBorderPieces = [];
+        let endBorderPieces = [];
         
-        // Check if diagonal lines manager is available
-        if (!this.diagonalLinesManager) {
-            this.log(`⚠️ Diagonal lines manager not available - no blocking detection possible`);
-            return blockingLines;
+        if (isX) {
+            // X connects top (row 0) to bottom (row 14)
+            startBorderPieces = positions.filter(p => p.row === 0);
+            endBorderPieces = positions.filter(p => p.row === this.size - 1);
+        } else {
+            // O connects left (col 0) to right (col 14)
+            startBorderPieces = positions.filter(p => p.col === 0);
+            endBorderPieces = positions.filter(p => p.col === this.size - 1);
         }
         
-        try {
-            // Get opponent's diagonal connections
-            const opponentConnections = this.diagonalLinesManager.getPlayerConnections(opponentPlayer);
-            
-            this.log(`🔍 Checking ${opponentConnections.length} ${opponentPlayer} diagonal connections for blocking...`);
-            
-            for (const connection of opponentConnections) {
-                blockingLines.push({
-                    player: opponentPlayer,
-                    row1: connection.row1,
-                    col1: connection.col1,
-                    row2: connection.row2,
-                    col2: connection.col2,
-                    establishedAt: connection.establishedAtMove || 0,
-                    type: connection.type
-                });
-                
-                this.log(`   🔍 ${opponentPlayer} diagonal: (${connection.row1},${connection.col1})-(${connection.row2},${connection.col2}) [move ${connection.establishedAtMove}]`);
-            }
-            
-        } catch (error) {
-            this.log(`⚠️ Error getting opponent diagonal connections: ${error.message}`);
+        const hasStartBorder = startBorderPieces.length > 0;
+        const hasEndBorder = endBorderPieces.length > 0;
+        
+        if (!hasStartBorder && !hasEndBorder) {
+            return {
+                hasBothBorders: false,
+                reason: `No pieces on either ${isX ? 'top/bottom' : 'left/right'} border`
+            };
+        } else if (!hasStartBorder) {
+            return {
+                hasBothBorders: false,
+                reason: `No pieces on ${isX ? 'top (row 0)' : 'left (col 0)'} border`
+            };
+        } else if (!hasEndBorder) {
+            return {
+                hasBothBorders: false,
+                reason: `No pieces on ${isX ? 'bottom (row 14)' : 'right (col 14)'} border`
+            };
         }
         
-        return blockingLines;
+        return {
+            hasBothBorders: true,
+            startBorderPieces,
+            endBorderPieces
+        };
     }
-
+    
     /**
-     * Check if a connection between two pieces is blocked by opponent diagonal
+     * Check if player has at least one piece on all rows (X) or columns (O)
      */
-    isConnectionBlocked(piece1, piece2, blockingLines) {
-        // Skip blocking check for lateral connections
-        const dr = Math.abs(piece2.row - piece1.row);
-        const dc = Math.abs(piece2.col - piece1.col);
+    checkCompleteCoverage(positions, isX) {
+        const coverage = new Set();
         
-        // Only diagonal connections (dr=1, dc=1) can be blocked by opponent diagonals
-        if (!(dr === 1 && dc === 1)) {
-            return false; // Lateral connections are never blocked
+        if (isX) {
+            // X needs coverage of all rows (0-14)
+            positions.forEach(p => coverage.add(p.row));
+            
+            const missingRows = [];
+            for (let row = 0; row < this.size; row++) {
+                if (!coverage.has(row)) {
+                    missingRows.push(row);
+                }
+            }
+            
+            if (missingRows.length > 0) {
+                return {
+                    hasCompleteCoverage: false,
+                    reason: `Missing rows: [${missingRows.join(', ')}]`
+                };
+            }
+        } else {
+            // O needs coverage of all columns (0-14)
+            positions.forEach(p => coverage.add(p.col));
+            
+            const missingCols = [];
+            for (let col = 0; col < this.size; col++) {
+                if (!coverage.has(col)) {
+                    missingCols.push(col);
+                }
+            }
+            
+            if (missingCols.length > 0) {
+                return {
+                    hasCompleteCoverage: false,
+                    reason: `Missing columns: [${missingCols.join(', ')}]`
+                };
+            }
         }
         
-        this.log(`🔍 Checking diagonal connection (${piece1.row},${piece1.col}) → (${piece2.row},${piece2.col})`);
+        return {
+            hasCompleteCoverage: true,
+            coverage: Array.from(coverage).sort((a, b) => a - b)
+        };
+    }
+    
+    /**
+     * Find a connected path from start border to end border
+     * Uses BFS to traverse connected pieces
+     */
+    findConnectedBorderPath(positions, player, isX) {
+        // Get border pieces
+        const startBorderPieces = positions.filter(p => 
+            isX ? p.row === 0 : p.col === 0
+        );
+        const endBorderPositions = new Set(
+            positions.filter(p => 
+                isX ? p.row === this.size - 1 : p.col === this.size - 1
+            ).map(p => `${p.row},${p.col}`)
+        );
         
-        // For each blocking line, check if it intersects with our diagonal connection
-        for (const blockingLine of blockingLines) {
-            if (this.doConnectionsIntersect(piece1, piece2, blockingLine)) {
-                this.log(`🚫 Diagonal connection blocked by ${blockingLine.player} line (${blockingLine.row1},${blockingLine.col1})-(${blockingLine.row2},${blockingLine.col2})`);
-                return true;
+        // Create position lookup for quick checks
+        const positionSet = new Set(positions.map(p => `${p.row},${p.col}`));
+        
+        // Try to find path from each start border piece
+        for (const startPiece of startBorderPieces) {
+            const path = this.bfsPath(
+                startPiece, 
+                endBorderPositions, 
+                positionSet, 
+                player
+            );
+            
+            if (path) {
+                const endPiece = path[path.length - 1];
+                return {
+                    hasPath: true,
+                    reason: `Connected path from ${isX ? 'top' : 'left'} (${startPiece.row},${startPiece.col}) to ${isX ? 'bottom' : 'right'} (${endPiece.row},${endPiece.col})`,
+                    path: path
+                };
             }
+        }
+        
+        return {
+            hasPath: false,
+            reason: `No connected path found between ${isX ? 'top and bottom' : 'left and right'} borders`
+        };
+    }
+    
+    /**
+     * BFS to find connected path
+     */
+    bfsPath(start, endPositions, validPositions, player) {
+        const visited = new Set();
+        const queue = [{
+            pos: start,
+            path: [start]
+        }];
+        const startKey = `${start.row},${start.col}`;
+        visited.add(startKey);
+        
+        while (queue.length > 0) {
+            const current = queue.shift();
+            const currentKey = `${current.pos.row},${current.pos.col}`;
+            
+            // Check if we reached the end border
+            if (endPositions.has(currentKey)) {
+                return current.path;
+            }
+            
+            // Get all valid adjacent positions
+            const adjacentPositions = this.getValidAdjacentPositions(
+                current.pos, 
+                validPositions, 
+                visited, 
+                player
+            );
+            
+            for (const adjPos of adjacentPositions) {
+                const adjKey = `${adjPos.row},${adjPos.col}`;
+                visited.add(adjKey);
+                queue.push({
+                    pos: adjPos,
+                    path: [...current.path, adjPos]
+                });
+            }
+        }
+        
+        return null; // No path found
+    }
+    
+    /**
+     * Get valid adjacent positions (considering diagonal blocking)
+     */
+    getValidAdjacentPositions(position, validPositions, visited, player) {
+        const adjacent = [];
+        const opponent = player === 'X' ? 'O' : 'X';
+        
+        // All 8 directions: lateral (4) + diagonal (4)
+        const directions = [
+            { dr: -1, dc: 0, type: 'lateral' },  // North
+            { dr: 1, dc: 0, type: 'lateral' },   // South
+            { dr: 0, dc: -1, type: 'lateral' },  // West
+            { dr: 0, dc: 1, type: 'lateral' },   // East
+            { dr: -1, dc: -1, type: 'diagonal' }, // NW
+            { dr: -1, dc: 1, type: 'diagonal' },  // NE
+            { dr: 1, dc: -1, type: 'diagonal' },  // SW
+            { dr: 1, dc: 1, type: 'diagonal' }    // SE
+        ];
+        
+        for (const dir of directions) {
+            const newRow = position.row + dir.dr;
+            const newCol = position.col + dir.dc;
+            const newKey = `${newRow},${newCol}`;
+            
+            // Skip if already visited
+            if (visited.has(newKey)) continue;
+            
+            // Skip if not a valid player position
+            if (!validPositions.has(newKey)) continue;
+            
+            // For diagonal connections, check if blocked by opponent's diagonal
+            if (dir.type === 'diagonal') {
+                if (this.isDiagonalBlocked(position, { row: newRow, col: newCol }, opponent)) {
+                    this.log(`  Diagonal (${position.row},${position.col}) → (${newRow},${newCol}) blocked by ${opponent}`);
+                    continue; // Skip blocked diagonal
+                }
+            }
+            
+            adjacent.push({ row: newRow, col: newCol });
+        }
+        
+        return adjacent;
+    }
+    
+    /**
+     * Check if diagonal connection is blocked by opponent's diagonal
+     */
+    isDiagonalBlocked(pos1, pos2, opponent) {
+        // A diagonal is blocked if the opponent has both pieces in the crossing pattern
+        // For diagonal from (r1,c1) to (r2,c2), the crossing cells are:
+        // (r1,c2) and (r2,c1)
+        
+        const crossCell1 = { row: pos1.row, col: pos2.col };
+        const crossCell2 = { row: pos2.row, col: pos1.col };
+        
+        // Check if opponent occupies both crossing cells
+        const hasCross1 = this.board[crossCell1.row] && 
+                         this.board[crossCell1.row][crossCell1.col] === opponent;
+        const hasCross2 = this.board[crossCell2.row] && 
+                         this.board[crossCell2.row][crossCell2.col] === opponent;
+        
+        // If opponent has both crossing cells, the diagonal is blocked
+        if (hasCross1 && hasCross2) {
+            // Check timing - who established the diagonal first
+            const diagonalTiming = this.checkDiagonalTimingPriority(
+                pos1, pos2, crossCell1, crossCell2, opponent
+            );
+            return diagonalTiming.opponentFirst;
         }
         
         return false;
     }
-
-    /**
-     * Check if two line segments intersect
-     */
-    doConnectionsIntersect(conn1Start, conn1End, blockingLine) {
-        // Line 1: our connection
-        const x1 = conn1Start.col, y1 = conn1Start.row;
-        const x2 = conn1End.col, y2 = conn1End.row;
-        
-        // Line 2: opponent's blocking diagonal
-        const x3 = blockingLine.col1, y3 = blockingLine.row1;
-        const x4 = blockingLine.col2, y4 = blockingLine.row2;
-        
-        // Check if lines share an endpoint (allowed - pieces can be adjacent)
-        if ((x1 === x3 && y1 === y3) || (x1 === x4 && y1 === y4) ||
-            (x2 === x3 && y2 === y3) || (x2 === x4 && y2 === y4)) {
-            return false; // Sharing endpoint is allowed
-        }
-        
-        // Use parametric line intersection test
-        const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        
-        // Lines are parallel
-        if (Math.abs(denom) < 0.0001) {
-            return false;
-        }
-        
-        // Calculate intersection parameters
-        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
-        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
-        
-        // Check if intersection point is within both line segments
-        const intersects = (t > 0.01 && t < 0.99) && (u > 0.01 && u < 0.99);
-        
-        if (intersects) {
-            const intersectX = x1 + t * (x2 - x1);
-            const intersectY = y1 + t * (y2 - y1);
-            this.log(`⚡ INTERSECTION: Lines cross at (${intersectX.toFixed(1)}, ${intersectY.toFixed(1)})`);
-        }
-        
-        return intersects;
-    }
-
-    // ===== FRAGMENT-AWARE TESTING METHODS =====
     
     /**
-     * NEW: Test if a fragment (subset of pieces) could be a winning candidate
-     * This is useful for the fragment-aware system to evaluate fragment potential
+     * Check diagonal timing priority (first to establish blocks)
      */
-    testFragmentAsWinningCandidate(player, fragmentPieces) {
-        this.log(`🧪 Testing fragment as winning candidate for ${player}: ${fragmentPieces.length} pieces`);
+    checkDiagonalTimingPriority(pos1, pos2, crossCell1, crossCell2, opponent) {
+        // Find when each piece was placed from game history
+        let pos1Time = -1, pos2Time = -1;
+        let cross1Time = -1, cross2Time = -1;
         
-        // Must have pieces at both borders to be a candidate
-        const borderTest = this.testFragmentBorderConnectivity(player, fragmentPieces);
-        if (!borderTest.hasBothBorders) {
-            this.log(`❌ Fragment fails border test: ${borderTest.reason}`);
-            return {
-                isCandidate: false,
-                reason: borderTest.reason,
-                fragmentSize: fragmentPieces.length
-            };
+        for (let i = 0; i < this.gameHistory.length; i++) {
+            const move = this.gameHistory[i];
+            
+            if (move.row === pos1.row && move.col === pos1.col) {
+                pos1Time = i;
+            }
+            if (move.row === pos2.row && move.col === pos2.col) {
+                pos2Time = i;
+            }
+            if (move.row === crossCell1.row && move.col === crossCell1.col) {
+                cross1Time = i;
+            }
+            if (move.row === crossCell2.row && move.col === crossCell2.col) {
+                cross2Time = i;
+            }
         }
         
-        // Test if fragment could form a winning path
-        const pathTest = this.checkWinByRowTraversal(player, fragmentPieces);
+        // Diagonal is established when second piece is placed
+        const myDiagonalTime = Math.max(pos1Time, pos2Time);
+        const opponentDiagonalTime = Math.max(cross1Time, cross2Time);
         
+        // If both pieces aren't placed yet, no diagonal exists
+        if (pos1Time === -1 || pos2Time === -1) {
+            return { opponentFirst: false };
+        }
+        
+        if (cross1Time === -1 || cross2Time === -1) {
+            return { opponentFirst: false };
+        }
+        
+        // If opponent's diagonal was established first, it blocks
         return {
-            isCandidate: pathTest.isWin,
-            reason: pathTest.reason,
-            fragmentSize: fragmentPieces.length,
-            borderTest: borderTest,
-            pathTest: pathTest
+            opponentFirst: opponentDiagonalTime < myDiagonalTime,
+            myTime: myDiagonalTime,
+            opponentTime: opponentDiagonalTime
         };
-    }
-
-    /**
-     * NEW: Test if fragment has connectivity to both required borders
-     */
-    testFragmentBorderConnectivity(player, fragmentPieces) {
-        if (player === 'X') {
-            const topBorderPieces = fragmentPieces.filter(p => p.row === 0);
-            const bottomBorderPieces = fragmentPieces.filter(p => p.row === this.size - 1);
-            
-            const hasBoth = topBorderPieces.length > 0 && bottomBorderPieces.length > 0;
-            
-            return {
-                hasBothBorders: hasBoth,
-                startBorderPieces: topBorderPieces.length,
-                endBorderPieces: bottomBorderPieces.length,
-                reason: hasBoth ? 'Fragment connects both borders' : 
-                       (topBorderPieces.length === 0 ? 'No top border connection' : 'No bottom border connection')
-            };
-        } else {
-            const leftBorderPieces = fragmentPieces.filter(p => p.col === 0);
-            const rightBorderPieces = fragmentPieces.filter(p => p.col === this.size - 1);
-            
-            const hasBoth = leftBorderPieces.length > 0 && rightBorderPieces.length > 0;
-            
-            return {
-                hasBothBorders: hasBoth,
-                startBorderPieces: leftBorderPieces.length,
-                endBorderPieces: rightBorderPieces.length,
-                reason: hasBoth ? 'Fragment connects both borders' : 
-                       (leftBorderPieces.length === 0 ? 'No left border connection' : 'No right border connection')
-            };
-        }
     }
 
     // ===== UTILITY METHODS =====
     
+    /**
+     * Get all positions occupied by a player
+     */
     getPlayerPositions(player) {
         const positions = [];
         for (let row = 0; row < this.size; row++) {
@@ -795,165 +760,278 @@ class ConnectionGameCore {
         }
         return positions;
     }
-
+    
+    /**
+     * Check if a position is valid
+     */
+    isValidPosition(row, col) {
+        // Use geometry module if available
+        if (this.geometry && typeof this.geometry.isValidPosition === 'function') {
+            return this.geometry.isValidPosition(row, col);
+        }
+        
+        // Fallback to built-in validation
+        return row >= 0 && row < this.size && col >= 0 && col < this.size;
+    }
+    
+    /**
+     * Check if a move is valid
+     */
+    isValidMove(row, col) {
+        if (!this.isValidPosition(row, col)) {
+            return false;
+        }
+        
+        if (this.board[row][col] !== '') {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Check if a position is empty
+     */
+    isEmpty(row, col) {
+        if (!this.isValidPosition(row, col)) {
+            return false;
+        }
+        return this.board[row][col] === '';
+    }
+    
+    /**
+     * Get the last opponent move
+     */
     getLastOpponentMove(currentPlayer) {
         const opponent = currentPlayer === 'X' ? 'O' : 'X';
         
-        // Find the most recent move by the opponent
+        // Search backwards through history for last opponent move
         for (let i = this.gameHistory.length - 1; i >= 0; i--) {
-            const move = this.gameHistory[i];
-            if (move.player === opponent) {
-                return move;
+            if (this.gameHistory[i].player === opponent) {
+                return this.gameHistory[i];
             }
         }
         
         return null;
     }
-
-    getTotalMoves() {
-        return this.moveCount;
-    }
-
-    getCurrentPlayer() {
-        return this.currentPlayer;
-    }
-
-    isGameOver() {
-        return this.gameOver;
-    }
-
-    getBoard() {
-        return this.board.map(row => [...row]); // Return a copy
-    }
-
-    getBoardSize() {
-        return this.size;
-    }
-
-    // ===== ENHANCED DEBUG AND ANALYSIS =====
     
     /**
-     * ENHANCED: Analyze board with fragment awareness
+     * Debug logging
      */
-    analyzeBoard() {
-        console.log('\n🔍 === FRAGMENT-AWARE BOARD ANALYSIS ===');
-        console.log(`Board size: ${this.size}x${this.size}`);
-        console.log(`Move count: ${this.moveCount}`);
-        console.log(`Current player: ${this.currentPlayer}`);
-        console.log(`Game over: ${this.gameOver}`);
-        console.log(`Fragment analysis: ${this.fragmentAnalysisEnabled ? 'ENABLED' : 'DISABLED'}`);
-        console.log(`Win detection method: ${this.winDetectionMethod}`);
+    log(message) {
+        if (this.settings.enableDebugLogging) {
+            console.log(`[GAME-CORE] ${message}`);
+        }
+    }
+    
+    /**
+     * Set debug mode
+     */
+    setDebugMode(enabled) {
+        this.settings.enableDebugLogging = enabled;
+        console.log(`🔧 Debug mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    }
+
+    // ===== DEBUG AND TESTING METHODS =====
+    
+    /**
+     * Test win detection with various scenarios
+     */
+    testWinDetection(player = 'X') {
+        console.log(`\n🧪 Testing win detection for ${player}...`);
         
+        // Create a test scenario
+        this.board = this.createTestBoard(player);
+        this.moveCount = 30; // Ensure we're past move 29
+        
+        // Populate game history for timing checks
+        this.gameHistory = [];
+        let moveNum = 0;
+        for (let row = 0; row < this.size; row++) {
+            for (let col = 0; col < this.size; col++) {
+                if (this.board[row][col] !== '') {
+                    this.gameHistory.push({
+                        row, col,
+                        player: this.board[row][col],
+                        moveNumber: ++moveNum,
+                        timestamp: Date.now()
+                    });
+                }
+            }
+        }
+        
+        const result = this.checkWin(player);
+        console.log('Result:', result);
+        return result;
+    }
+    
+    /**
+     * Create test board with winning configuration
+     */
+    createTestBoard(player) {
+        const board = [];
+        for (let row = 0; row < this.size; row++) {
+            board[row] = [];
+            for (let col = 0; col < this.size; col++) {
+                board[row][col] = '';
+            }
+        }
+        
+        if (player === 'X') {
+            // Create vertical winning line for X
+            for (let row = 0; row < this.size; row++) {
+                board[row][7] = 'X';
+            }
+            // Add some O pieces for realistic scenario
+            board[5][6] = 'O';
+            board[6][6] = 'O';
+            board[7][8] = 'O';
+        } else {
+            // Create horizontal winning line for O
+            for (let col = 0; col < this.size; col++) {
+                board[7][col] = 'O';
+            }
+            // Add some X pieces for realistic scenario
+            board[6][5] = 'X';
+            board[6][6] = 'X';
+            board[8][7] = 'X';
+        }
+        
+        return board;
+    }
+    
+    /**
+     * Print the current board state
+     */
+    printBoard() {
+        console.log('\n📋 Current Board State:');
+        console.log('   ' + Array.from({ length: this.size }, (_, i) => 
+            i.toString().padStart(2)).join(' '));
+        
+        for (let row = 0; row < this.size; row++) {
+            let rowStr = row.toString().padStart(2) + ' ';
+            for (let col = 0; col < this.size; col++) {
+                const cell = this.board[row][col];
+                rowStr += (cell || '.').padStart(2) + ' ';
+            }
+            console.log(rowStr);
+        }
+        console.log('');
+    }
+    
+    /**
+     * Get game statistics
+     */
+    getGameStats() {
         const xPositions = this.getPlayerPositions('X');
         const oPositions = this.getPlayerPositions('O');
         
-        console.log(`X pieces: ${xPositions.length}`);
-        console.log(`O pieces: ${oPositions.length}`);
-        
-        if (this.lastMove) {
-            console.log(`Last move: ${this.lastMove.player} at (${this.lastMove.row},${this.lastMove.col})`);
-        }
-        
-        // Fragment analysis if enabled
-        if (this.fragmentAnalysisEnabled && xPositions.length > 0) {
-            const xFragmentTest = this.testFragmentAsWinningCandidate('X', xPositions);
-            console.log(`X winning candidate: ${xFragmentTest.isCandidate} - ${xFragmentTest.reason}`);
-        }
-        
-        if (this.fragmentAnalysisEnabled && oPositions.length > 0) {
-            const oFragmentTest = this.testFragmentAsWinningCandidate('O', oPositions);
-            console.log(`O winning candidate: ${oFragmentTest.isCandidate} - ${oFragmentTest.reason}`);
-        }
-        
-        console.log('🔍 === END FRAGMENT-AWARE ANALYSIS ===\n');
+        return {
+            moveCount: this.moveCount,
+            currentPlayer: this.currentPlayer,
+            gameOver: this.gameOver,
+            xPieces: xPositions.length,
+            oPieces: oPositions.length,
+            boardSize: this.size,
+            historyLength: this.gameHistory.length,
+            lastMove: this.lastMove
+        };
     }
-
+    
     /**
-     * ENHANCED: Debug win condition with fragment awareness
+     * Export game state
      */
-    debugWinCondition(player) {
-        console.log(`\n🏆 === FRAGMENT-AWARE WIN CONDITION DEBUG FOR ${player} ===`);
-        
-        const positions = this.getPlayerPositions(player);
-        console.log(`Player positions (${positions.length}):`, positions);
-        
-        // Test fragment as winning candidate
-        const fragmentTest = this.testFragmentAsWinningCandidate(player, positions);
-        console.log('Fragment candidate test:', fragmentTest);
-        
-        // Test full win condition
-        const winResult = this.checkWin(player);
-        console.log('Final win result:', winResult);
-        
-        console.log('🏆 === END FRAGMENT-AWARE WIN DEBUG ===\n');
-        
-        return winResult;
+    exportGameState() {
+        return {
+            board: this.board,
+            currentPlayer: this.currentPlayer,
+            gameOver: this.gameOver,
+            gameHistory: this.gameHistory,
+            moveCount: this.moveCount,
+            lastMove: this.lastMove,
+            size: this.size
+        };
     }
-
+    
     /**
-     * NEW: Debug specific path for troubleshooting
+     * Import game state
      */
-    debugRowTraversalPath(player, pathResult) {
-        this.log(`\n🔍 === ROW TRAVERSAL PATH DEBUG FOR ${player} ===`);
+    importGameState(state) {
+        this.board = state.board || this.board;
+        this.currentPlayer = state.currentPlayer || this.currentPlayer;
+        this.gameOver = state.gameOver || false;
+        this.gameHistory = state.gameHistory || [];
+        this.moveCount = state.moveCount || 0;
+        this.lastMove = state.lastMove || null;
+        this.size = state.size || this.size;
         
-        if (!pathResult || !pathResult.fullPath || pathResult.fullPath.length === 0) {
-            this.log(`❌ No path to debug`);
-            return;
-        }
-        
-        const path = pathResult.fullPath;
-        this.log(`📊 Path length: ${path.length} pieces`);
-        this.log(`🎯 Path completion: ${pathResult.isComplete ? 'COMPLETE' : 'INCOMPLETE'}`);
-        
-        if (player === 'X') {
-            // Show path by rows
-            const pathByRows = {};
-            path.forEach(piece => {
-                if (!pathByRows[piece.row]) pathByRows[piece.row] = [];
-                pathByRows[piece.row].push(`(${piece.row},${piece.col})`);
-            });
-            
-            this.log(`📍 X Path by rows:`);
-            for (let row = 0; row < this.size; row++) {
-                if (pathByRows[row]) {
-                    this.log(`   Row ${row}: ${pathByRows[row].join(', ')}`);
-                }
-            }
-            
-            const coveredRows = Object.keys(pathByRows).map(Number).sort((a,b) => a-b);
-            this.log(`📊 Covered rows: [${coveredRows.join(', ')}] (${coveredRows.length}/${this.size})`);
-        } else {
-            // Show path by columns  
-            const pathByCols = {};
-            path.forEach(piece => {
-                if (!pathByCols[piece.col]) pathByCols[piece.col] = [];
-                pathByCols[piece.col].push(`(${piece.row},${piece.col})`);
-            });
-            
-            this.log(`📍 O Path by columns:`);
-            for (let col = 0; col < this.size; col++) {
-                if (pathByCols[col]) {
-                    this.log(`   Col ${col}: ${pathByCols[col].join(', ')}`);
-                }
-            }
-            
-            const coveredCols = Object.keys(pathByCols).map(Number).sort((a,b) => a-b);
-            this.log(`📊 Covered columns: [${coveredCols.join(', ')}] (${coveredCols.length}/${this.size})`);
-        }
-        
-        this.log(`🔍 === END ROW TRAVERSAL DEBUG ===\n`);
-    }
-
-    log(message) {
-        console.log(`[FRAGMENT-AWARE-CORE] ${message}`);
+        console.log('📥 Game state imported successfully');
     }
 }
 
-// Export for browser
+// ===== FACTORY FUNCTION =====
+
+/**
+ * Create game with automatic module connection
+ */
+function createConnectionGame(size = 15, opts = {}) {
+    const defaults = {
+        connectModulesAutomatically: true,
+        enableDebugMode: false
+    };
+    const options = { ...defaults, ...opts };
+    
+    console.log('🗂️ Creating Connection Game...');
+    
+    const gameCore = new ConnectionGameCore(size);
+    
+    // Auto-connect universal modules if available
+    if (options.connectModulesAutomatically && typeof window !== 'undefined') {
+        try {
+            const geometry = window.createGameGeometry ? 
+                window.createGameGeometry(size) : null;
+            const connections = window.createConnectionValidator && geometry ? 
+                window.createConnectionValidator(gameCore, geometry) : null;
+            const patterns = window.createPatternEngine && geometry ? 
+                window.createPatternEngine(gameCore, geometry) : null;
+            const analyzer = window.createBoardAnalyzer && geometry && patterns && connections ? 
+                window.createBoardAnalyzer(gameCore, geometry, patterns, connections) : null;
+            
+            if (geometry && connections) {
+                gameCore.initializeModules(geometry, connections, patterns, analyzer);
+                console.log('🔗 Auto-connected universal modules');
+            } else {
+                console.warn('⚠️ Some modules not available for auto-connection');
+            }
+        } catch (error) {
+            console.warn('⚠️ Auto-connection failed:', error.message);
+        }
+    }
+    
+    if (options.enableDebugMode) {
+        gameCore.setDebugMode(true);
+    }
+    
+    return gameCore;
+}
+
+// ===== EXPORTS =====
+
+// Export for different module systems
 if (typeof window !== 'undefined') {
+    // Browser global
     window.ConnectionGameCore = ConnectionGameCore;
+    window.createConnectionGame = createConnectionGame;
+    console.log('✅ ConnectionGameCore exported to window');
+} else if (typeof module !== 'undefined' && module.exports) {
+    // Node.js
+    module.exports = { ConnectionGameCore, createConnectionGame };
+} else if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(() => ({ ConnectionGameCore, createConnectionGame }));
 }
 
-console.log('✅ Fragment-Aware Connection Game Core with Enhanced Row-by-Row Win Detection loaded');
-console.log('🔗 Features: Row traversal validation, fragment candidate testing, diagonal blocking integration');
-console.log('🧪 Fragment testing: testFragmentAsWinningCandidate() method available for AI fragment analysis');
+console.log('✅ Connection Game Core v2.0 loaded - Player-independent win detection ready');
+console.log('🎮 Usage: const game = createConnectionGame(15);');
+console.log('🧪 Test: game.testWinDetection("X"); game.testWinDetection("O");');
+console.log('🔧 Debug: game.setDebugMode(true);');
