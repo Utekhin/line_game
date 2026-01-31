@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connection Game - Human vs Human</title>
     <style>
+        :root {
+            --board-size: 15;
+            --cell-size: 30px;
+            --gap-size: 1px;
+            --x-color: #2196F3;
+            --o-color: #4CAF50;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -14,7 +21,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
         }
         h1 {
@@ -40,7 +47,7 @@
         .setup-panel h2 { margin-bottom: 20px; }
         .setup-panel p { color: #aaa; margin-bottom: 15px; }
         .btn {
-            background: #2196F3;
+            background: var(--x-color);
             color: white;
             border: none;
             padding: 15px 30px;
@@ -51,7 +58,7 @@
         }
         .btn:hover { background: #1976D2; }
         .btn:disabled { background: #666; cursor: not-allowed; }
-        .btn.secondary { background: #4CAF50; }
+        .btn.secondary { background: var(--o-color); }
         .btn.secondary:hover { background: #388E3C; }
 
         /* Game Code Display */
@@ -64,7 +71,7 @@
         .game-code .code {
             font-size: 2rem;
             font-family: monospace;
-            color: #4CAF50;
+            color: var(--o-color);
             letter-spacing: 3px;
         }
         .game-code .link {
@@ -99,10 +106,11 @@
             padding: 20px;
         }
         .game-section.active { display: block; }
-        .board-container {
+        .board-outer-container {
             display: flex;
             justify-content: center;
             margin: 20px 0;
+            overflow-x: auto;
         }
         .board-wrapper-inner {
             position: relative;
@@ -110,27 +118,24 @@
         }
         .board {
             display: grid;
-            grid-template-columns: repeat(15, 30px);
-            gap: 1px;
+            gap: var(--gap-size);
             background: #333;
-            padding: 1px;
+            padding: var(--gap-size);
             border-radius: 5px;
         }
         .cell {
-            width: 30px;
-            height: 30px;
             background: #1a1a2e;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             font-weight: bold;
-            font-size: 14px;
             transition: background 0.2s;
+            aspect-ratio: 1;
         }
         .cell:hover { background: #2a2a4e; }
-        .cell.X { color: #2196F3; background: rgba(33,150,243,0.2); }
-        .cell.O { color: #4CAF50; background: rgba(76,175,80,0.2); }
+        .cell.X { color: var(--x-color); background: rgba(33,150,243,0.2); }
+        .cell.O { color: var(--o-color); background: rgba(76,175,80,0.2); }
         .cell.disabled { cursor: not-allowed; }
         .cell.last-move {
             box-shadow: inset 0 0 0 2px #FF9800;
@@ -168,8 +173,8 @@
             font-size: 2rem;
             font-weight: bold;
         }
-        .player-info.X .role { color: #2196F3; }
-        .player-info.O .role { color: #4CAF50; }
+        .player-info.X .role { color: var(--x-color); }
+        .player-info.O .role { color: var(--o-color); }
 
         /* Game rules */
         .game-rules {
@@ -177,8 +182,8 @@
             color: #888;
             margin-bottom: 25px;
         }
-        .x-text { color: #2196F3; font-weight: bold; }
-        .o-text { color: #4CAF50; font-weight: bold; }
+        .x-text { color: var(--x-color); font-weight: bold; }
+        .o-text { color: var(--o-color); font-weight: bold; }
 
         /* Border indicators */
         .board-wrapper {
@@ -191,45 +196,48 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 100%;
         }
         .border-indicator {
             font-weight: bold;
-            font-size: 10px;
-            letter-spacing: 1px;
             opacity: 0.6;
             flex-shrink: 0;
+            display: flex;
         }
         .top-border, .bottom-border {
-            color: #2196F3;
-            text-align: center;
+            color: var(--x-color);
+            justify-content: space-around;
             padding: 5px 0;
-            width: 100%;
+        }
+        .top-border span, .bottom-border span {
+            width: var(--cell-size);
+            text-align: center;
+            font-size: 10px;
         }
         .left-border, .right-border {
-            color: #4CAF50;
-            line-height: 2.05;
+            color: var(--o-color);
+            flex-direction: column;
+            align-items: center;
             padding: 0 6px;
-            font-size: 9px;
         }
-        /* Ensure board container displays properly */
-        .board-with-sides .board-container {
-            flex: 1;
-            position: relative;
+        .left-border span, .right-border span {
+            height: var(--cell-size);
+            display: flex;
+            align-items: center;
+            font-size: 9px;
         }
 
         /* Diagonal lines SVG overlay */
         #diagonal-svg {
             position: absolute;
-            top: 1px;  /* Match board padding */
-            left: 1px;
-            width: calc(100% - 2px);
-            height: calc(100% - 2px);
+            top: var(--gap-size);
+            left: var(--gap-size);
+            width: calc(100% - 2 * var(--gap-size));
+            height: calc(100% - 2 * var(--gap-size));
             pointer-events: none;
             z-index: 10;
         }
-        .diagonal-line-X { stroke: #2196F3; }
-        .diagonal-line-O { stroke: #4CAF50; }
+        .diagonal-line-X { stroke: var(--x-color); }
+        .diagonal-line-O { stroke: var(--o-color); }
 
         /* Resign button */
         .btn.resign {
@@ -284,23 +292,23 @@
             </div>
         </div>
 
-        <!-- Game Section -->
+        <!-- Game Section - Board generated dynamically -->
         <div class="game-section" id="gameSection">
             <div class="turn-indicator" id="turnIndicator">Waiting...</div>
 
             <div class="board-wrapper">
-                <div class="border-indicator top-border">X X X X X X X X X X X X X X X</div>
+                <div class="border-indicator top-border" id="topBorder"></div>
                 <div class="board-with-sides">
-                    <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
-                    <div class="board-container">
+                    <div class="border-indicator left-border" id="leftBorder"></div>
+                    <div class="board-outer-container">
                         <div class="board-wrapper-inner">
                             <div class="board" id="board"></div>
                             <svg id="diagonal-svg"></svg>
                         </div>
                     </div>
-                    <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                    <div class="border-indicator right-border" id="rightBorder"></div>
                 </div>
-                <div class="border-indicator bottom-border">X X X X X X X X X X X X X X X</div>
+                <div class="border-indicator bottom-border" id="bottomBorder"></div>
             </div>
 
             <div class="game-info">
@@ -323,23 +331,50 @@
     </div>
 
     <script>
+    // ===== GAME CONFIGURATION =====
+    const GAME_CONFIG = {
+        boardSize: 15,        // Can be changed to 25 in the future
+        minMovesForWin: 29,   // Minimum moves before win check (2*boardSize - 1)
+        cellSize: 30,         // Base cell size in pixels
+        gap: 1                // Gap between cells
+    };
+
+    // Calculate responsive cell size based on viewport
+    function calculateCellSize(boardSize) {
+        const maxBoardWidth = Math.min(window.innerWidth - 100, 700); // Leave room for borders
+        const calculatedSize = Math.floor(maxBoardWidth / boardSize);
+        return Math.max(20, Math.min(calculatedSize, 40)); // Between 20-40px
+    }
+
     class HumanVsHumanGame {
-        constructor() {
+        constructor(config = GAME_CONFIG) {
+            this.config = config;
+            this.boardSize = config.boardSize;
+            this.cellSize = calculateCellSize(this.boardSize);
+            this.gap = config.gap;
+
             this.ws = null;
             this.gameCode = null;
             this.myRole = null;
             this.currentPlayer = 'X';
-            this.board = Array(15).fill(null).map(() => Array(15).fill(''));
+            this.board = this.createEmptyBoard();
             this.gameStarted = false;
             this.moveCount = 0;
-            this.moveHistory = []; // Track moves for diagonal lines
-            this.diagonalConnections = []; // Established diagonal connections
+            this.moveHistory = [];
+            this.diagonalConnections = [];
             this.lastMoveCell = null;
 
             this.init();
         }
 
+        createEmptyBoard() {
+            return Array(this.boardSize).fill(null).map(() => Array(this.boardSize).fill(''));
+        }
+
         init() {
+            // Apply CSS variables for dynamic sizing
+            this.applyCSSVariables();
+
             // Check if joining via URL
             const urlParams = new URLSearchParams(window.location.search);
             const gameCode = urlParams.get('game');
@@ -351,6 +386,35 @@
             this.connectWebSocket();
             this.setupEventListeners();
             this.createBoard();
+            this.createBorderIndicators();
+
+            // Handle window resize
+            window.addEventListener('resize', () => this.handleResize());
+        }
+
+        applyCSSVariables() {
+            const root = document.documentElement;
+            root.style.setProperty('--board-size', this.boardSize);
+            root.style.setProperty('--cell-size', `${this.cellSize}px`);
+            root.style.setProperty('--gap-size', `${this.gap}px`);
+        }
+
+        handleResize() {
+            const newCellSize = calculateCellSize(this.boardSize);
+            if (newCellSize !== this.cellSize) {
+                this.cellSize = newCellSize;
+                this.applyCSSVariables();
+                this.updateBoardStyles();
+                this.updateDiagonalLines();
+            }
+        }
+
+        updateBoardStyles() {
+            const boardEl = document.getElementById('board');
+            if (boardEl) {
+                boardEl.style.gridTemplateColumns = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+                boardEl.style.gridTemplateRows = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+            }
         }
 
         connectWebSocket() {
@@ -359,8 +423,6 @@
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
-
-                // If joining, send join request
                 const urlParams = new URLSearchParams(window.location.search);
                 const gameCode = urlParams.get('game');
                 if (gameCode) {
@@ -387,21 +449,69 @@
         createBoard() {
             const boardEl = document.getElementById('board');
             boardEl.innerHTML = '';
+            boardEl.style.gridTemplateColumns = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+            boardEl.style.gridTemplateRows = `repeat(${this.boardSize}, ${this.cellSize}px)`;
 
-            for (let row = 0; row < 15; row++) {
-                for (let col = 0; col < 15; col++) {
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     cell.dataset.row = row;
                     cell.dataset.col = col;
+                    cell.style.fontSize = `${Math.max(10, this.cellSize * 0.45)}px`;
                     cell.addEventListener('click', () => this.handleCellClick(row, col));
                     boardEl.appendChild(cell);
                 }
             }
         }
 
+        createBorderIndicators() {
+            // Top border (X's)
+            const topBorder = document.getElementById('topBorder');
+            topBorder.innerHTML = '';
+            for (let i = 0; i < this.boardSize; i++) {
+                const span = document.createElement('span');
+                span.textContent = 'X';
+                span.style.width = `${this.cellSize}px`;
+                topBorder.appendChild(span);
+            }
+
+            // Bottom border (X's)
+            const bottomBorder = document.getElementById('bottomBorder');
+            bottomBorder.innerHTML = '';
+            for (let i = 0; i < this.boardSize; i++) {
+                const span = document.createElement('span');
+                span.textContent = 'X';
+                span.style.width = `${this.cellSize}px`;
+                bottomBorder.appendChild(span);
+            }
+
+            // Left border (O's)
+            const leftBorder = document.getElementById('leftBorder');
+            leftBorder.innerHTML = '';
+            for (let i = 0; i < this.boardSize; i++) {
+                const span = document.createElement('span');
+                span.textContent = 'O';
+                span.style.height = `${this.cellSize + this.gap}px`;
+                leftBorder.appendChild(span);
+            }
+
+            // Right border (O's)
+            const rightBorder = document.getElementById('rightBorder');
+            rightBorder.innerHTML = '';
+            for (let i = 0; i < this.boardSize; i++) {
+                const span = document.createElement('span');
+                span.textContent = 'O';
+                span.style.height = `${this.cellSize + this.gap}px`;
+                rightBorder.appendChild(span);
+            }
+        }
+
         createGame() {
-            this.ws.send(JSON.stringify({ type: 'CREATE_HVH_GAME' }));
+            this.ws.send(JSON.stringify({
+                type: 'CREATE_HVH_GAME',
+                boardSize: this.boardSize  // Send board size to server
+            }));
         }
 
         joinGame(gameCode) {
@@ -453,6 +563,15 @@
         onGameJoined(data) {
             this.gameCode = data.gameCode;
             this.myRole = data.role;
+            // If server sends board size, update it
+            if (data.boardSize && data.boardSize !== this.boardSize) {
+                this.boardSize = data.boardSize;
+                this.board = this.createEmptyBoard();
+                this.cellSize = calculateCellSize(this.boardSize);
+                this.applyCSSVariables();
+                this.createBoard();
+                this.createBorderIndicators();
+            }
             document.getElementById('joinGameCode').textContent = data.gameCode;
             document.getElementById('joinStatus').textContent = 'Connected! Starting game...';
             document.getElementById('joinStatus').className = 'status connected';
@@ -488,13 +607,11 @@
             this.board[row][col] = this.myRole;
             this.moveCount++;
 
-            // Track move history for diagonal lines
             this.moveHistory.push({ row, col, player: this.myRole, moveNumber: this.moveCount });
 
             this.updateCell(row, col, this.myRole);
             this.updateDiagonalLines();
 
-            // Send move to server
             this.ws.send(JSON.stringify({
                 type: 'HVH_MOVE',
                 row: row,
@@ -503,8 +620,9 @@
                 boardState: this.getBoardState()
             }));
 
-            // Check for win
-            if (this.moveCount >= 29 && this.checkWin(this.myRole)) {
+            // Win check: minimum moves = 2 * boardSize - 1
+            const minMoves = 2 * this.boardSize - 1;
+            if (this.moveCount >= minMoves && this.checkWin(this.myRole)) {
                 this.endGame(this.myRole, 'connection');
                 return;
             }
@@ -517,14 +635,13 @@
             this.board[data.row][data.col] = data.player;
             this.moveCount++;
 
-            // Track move history for diagonal lines
             this.moveHistory.push({ row: data.row, col: data.col, player: data.player, moveNumber: this.moveCount });
 
             this.updateCell(data.row, data.col, data.player);
             this.updateDiagonalLines();
 
-            // Check for opponent win
-            if (this.moveCount >= 29 && this.checkWin(data.player)) {
+            const minMoves = 2 * this.boardSize - 1;
+            if (this.moveCount >= minMoves && this.checkWin(data.player)) {
                 this.endGame(data.player, 'connection');
                 return;
             }
@@ -534,7 +651,6 @@
         }
 
         updateCell(row, col, player) {
-            // Remove last-move highlight from previous cell
             if (this.lastMoveCell) {
                 this.lastMoveCell.classList.remove('last-move');
             }
@@ -557,8 +673,8 @@
 
         getBoardState() {
             let state = '';
-            for (let row = 0; row < 15; row++) {
-                for (let col = 0; col < 15; col++) {
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
                     const cell = this.board[row][col];
                     state += cell === 'X' ? '1' : (cell === 'O' ? '2' : '0');
                 }
@@ -567,13 +683,13 @@
         }
 
         checkWin(player) {
-            // Simplified win check - just check if connected
             const visited = new Set();
             const queue = [];
+            const size = this.boardSize;
 
             if (player === 'X') {
                 // X needs top to bottom
-                for (let col = 0; col < 15; col++) {
+                for (let col = 0; col < size; col++) {
                     if (this.board[0][col] === 'X') {
                         queue.push([0, col]);
                     }
@@ -583,18 +699,18 @@
                     const key = `${r},${c}`;
                     if (visited.has(key)) continue;
                     visited.add(key);
-                    if (r === 14) return true;
+                    if (r === size - 1) return true;
 
                     const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
                     for (const [nr, nc] of neighbors) {
-                        if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && this.board[nr][nc] === 'X') {
+                        if (nr >= 0 && nr < size && nc >= 0 && nc < size && this.board[nr][nc] === 'X') {
                             queue.push([nr, nc]);
                         }
                     }
                 }
             } else {
                 // O needs left to right
-                for (let row = 0; row < 15; row++) {
+                for (let row = 0; row < size; row++) {
                     if (this.board[row][0] === 'O') {
                         queue.push([row, 0]);
                     }
@@ -604,11 +720,11 @@
                     const key = `${r},${c}`;
                     if (visited.has(key)) continue;
                     visited.add(key);
-                    if (c === 14) return true;
+                    if (c === size - 1) return true;
 
                     const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
                     for (const [nr, nc] of neighbors) {
-                        if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && this.board[nr][nc] === 'O') {
+                        if (nr >= 0 && nr < size && nc >= 0 && nc < size && this.board[nr][nc] === 'O') {
                             queue.push([nr, nc]);
                         }
                     }
@@ -624,7 +740,8 @@
             this.ws.send(JSON.stringify({
                 type: 'HVH_GAME_OVER',
                 winner: winner,
-                reason: reason  // 'connection' or 'resignation' - important for ML
+                reason: reason,
+                boardSize: this.boardSize  // Include for ML records
             }));
 
             const indicator = document.getElementById('turnIndicator');
@@ -641,7 +758,6 @@
             if (!this.gameStarted) return;
 
             if (confirm('Are you sure you want to resign? This will count as a loss.')) {
-                // Winner is the opponent
                 const winner = this.myRole === 'X' ? 'O' : 'X';
                 this.endGame(winner, 'resignation');
             }
@@ -686,49 +802,39 @@
             const svg = document.getElementById('diagonal-svg');
             if (!svg) return;
 
-            // Find new diagonal connections from the latest move
             this.findDiagonalConnections();
-
-            // Render all diagonal lines
             this.renderDiagonalLines(svg);
         }
 
         findDiagonalConnections() {
-            // Process the most recent move for new diagonal connections
             if (this.moveHistory.length === 0) return;
 
             const lastMove = this.moveHistory[this.moveHistory.length - 1];
             const { row, col, player, moveNumber } = lastMove;
-
-            // Check all 4 diagonal directions
             const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
 
             for (const [dr, dc] of directions) {
                 const adjRow = row + dr;
                 const adjCol = col + dc;
 
-                // Check if valid and same player
-                if (adjRow < 0 || adjRow >= 15 || adjCol < 0 || adjCol >= 15) continue;
+                if (adjRow < 0 || adjRow >= this.boardSize || adjCol < 0 || adjCol >= this.boardSize) continue;
                 if (this.board[adjRow][adjCol] !== player) continue;
 
-                // Check if connection already exists
                 const exists = this.diagonalConnections.some(conn =>
                     (conn.row1 === row && conn.col1 === col && conn.row2 === adjRow && conn.col2 === adjCol) ||
                     (conn.row1 === adjRow && conn.col1 === adjCol && conn.row2 === row && conn.col2 === col)
                 );
                 if (exists) continue;
 
-                // Check for crossing with existing connections (first locks wins)
+                // Check for crossing (first locks wins rule)
                 const crossRow = Math.min(row, adjRow);
                 const crossCol = Math.min(col, adjCol);
-                const isMainDiag = (dr === dc); // Both same sign = main diagonal direction
+                const isMainDiag = (dr === dc);
 
                 const wouldCross = this.diagonalConnections.some(conn => {
                     const connCrossRow = Math.min(conn.row1, conn.row2);
                     const connCrossCol = Math.min(conn.col1, conn.col2);
                     const connIsMainDiag = ((conn.row2 - conn.row1) === (conn.col2 - conn.col1));
-
-                    // Same crossing point, opposite diagonal direction = crossing
                     return connCrossRow === crossRow && connCrossCol === crossCol && connIsMainDiag !== isMainDiag;
                 });
 
@@ -744,37 +850,27 @@
         }
 
         renderDiagonalLines(svg) {
-            // Clear existing lines
             svg.innerHTML = '';
 
             const board = document.getElementById('board');
             if (!board) return;
 
-            // Board has: 15 cells of 30px each + 14 gaps of 1px + 2px padding = 466px total
-            // Each cell is 30px, gap is 1px
-            const cellSize = 30;
-            const gap = 1;
-            const totalSize = 15 * cellSize + 14 * gap; // 464px inner
-
-            // Set SVG viewBox to match the inner grid area
+            // Calculate total size dynamically
+            const totalSize = this.boardSize * this.cellSize + (this.boardSize - 1) * this.gap;
             svg.setAttribute('viewBox', `0 0 ${totalSize} ${totalSize}`);
 
-            // Draw each diagonal connection
             for (const conn of this.diagonalConnections) {
-                // Calculate center of each cell
-                // Cell N starts at: N * (cellSize + gap)
-                // Cell center is at: N * (cellSize + gap) + cellSize/2
-                const x1 = conn.col1 * (cellSize + gap) + cellSize / 2;
-                const y1 = conn.row1 * (cellSize + gap) + cellSize / 2;
-                const x2 = conn.col2 * (cellSize + gap) + cellSize / 2;
-                const y2 = conn.row2 * (cellSize + gap) + cellSize / 2;
+                const x1 = conn.col1 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const y1 = conn.row1 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const x2 = conn.col2 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const y2 = conn.row2 * (this.cellSize + this.gap) + this.cellSize / 2;
 
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 line.setAttribute('x1', x1);
                 line.setAttribute('y1', y1);
                 line.setAttribute('x2', x2);
                 line.setAttribute('y2', y2);
-                line.setAttribute('stroke-width', '3');
+                line.setAttribute('stroke-width', Math.max(2, this.cellSize * 0.1));
                 line.setAttribute('stroke-linecap', 'round');
                 line.setAttribute('opacity', '0.8');
                 line.classList.add('diagonal-line-' + conn.player);
@@ -784,8 +880,8 @@
         }
     }
 
-    // Initialize game
-    const game = new HumanVsHumanGame();
+    // Initialize game with config
+    const game = new HumanVsHumanGame(GAME_CONFIG);
     </script>
 </body>
 </html>
