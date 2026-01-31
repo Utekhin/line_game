@@ -205,7 +205,8 @@ function saveRecordedGame(gameData) {
 function gamesToCSV(games) {
     const headers = [
         'game_id', 'game_type', 'move_number', 'player', 'row', 'col',
-        'cell_index', 'move_type', 'source', 'board_state', 'winner'
+        'cell_index', 'move_type', 'source', 'board_state', 'winner',
+        'end_reason', 'resigned_by'  // New ML-important columns
     ];
 
     let csv = headers.join(',') + '\n';
@@ -223,7 +224,9 @@ function gamesToCSV(games) {
                 `"${move.moveType || ''}"`,
                 move.source || '',
                 move.boardState || '',
-                game.winner || 'none'
+                game.winner || 'none',
+                game.endReason || 'connection',
+                game.resignedBy || ''
             ];
             csv += row.join(',') + '\n';
         }
@@ -404,11 +407,13 @@ function handleHvHGameOver(ws, data) {
     const game = humanVsHumanGames.get(ws.gameCode);
     if (!game) return;
 
-    // Save the recorded game
+    // Save the recorded game with end reason (important for ML training)
     const gameRecord = {
         gameId: game.gameCode,
         gameType: 'human-vs-human',
         winner: data.winner,
+        endReason: data.reason || 'connection', // 'connection' or 'resignation' - key for ML
+        resignedBy: data.reason === 'resignation' ? (data.winner === 'X' ? 'O' : 'X') : null,
         totalMoves: game.moves.length,
         moves: game.moves,
         startedAt: new Date(game.created).toISOString(),
@@ -417,15 +422,17 @@ function handleHvHGameOver(ws, data) {
 
     saveRecordedGame(gameRecord);
 
-    // Notify opponent
+    // Notify opponent with full details
     const opponent = ws.playerRole === 'X' ? game.playerY : game.playerX;
     if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
         opponent.ws.send(JSON.stringify({
             type: 'HVH_GAME_ENDED',
             winner: data.winner,
-            reason: data.reason
+            reason: data.reason || 'connection'
         }));
     }
+
+    console.log(`📹 HvH game ended: ${game.gameCode} - Winner: ${data.winner}, Reason: ${data.reason || 'connection'}`);
 
     // Clean up
     humanVsHumanGames.delete(ws.gameCode);

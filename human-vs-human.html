@@ -128,6 +128,14 @@
         .cell.X { color: #2196F3; background: rgba(33,150,243,0.2); }
         .cell.O { color: #4CAF50; background: rgba(76,175,80,0.2); }
         .cell.disabled { cursor: not-allowed; }
+        .cell.last-move {
+            box-shadow: inset 0 0 0 2px #FF9800;
+            animation: pulse 1s infinite alternate;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
 
         /* Turn Indicator */
         .turn-indicator {
@@ -203,6 +211,37 @@
         /* Ensure board container displays properly */
         .board-with-sides .board-container {
             flex: 1;
+            position: relative;
+        }
+
+        /* Diagonal lines SVG overlay */
+        .board-container {
+            position: relative;
+        }
+        #diagonal-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .diagonal-line-X { stroke: #2196F3; }
+        .diagonal-line-O { stroke: #4CAF50; }
+
+        /* Resign button */
+        .btn.resign {
+            background: #e74c3c;
+            margin-top: 15px;
+        }
+        .btn.resign:hover { background: #c0392b; }
+        .btn.resign:disabled { background: #666; }
+
+        /* Controls section */
+        .game-controls {
+            text-align: center;
+            margin-top: 15px;
         }
     </style>
 </head>
@@ -254,6 +293,7 @@
                     <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
                     <div class="board-container">
                         <div class="board" id="board"></div>
+                        <svg id="diagonal-svg"></svg>
                     </div>
                     <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
                 </div>
@@ -272,6 +312,10 @@
                     <div id="playerOLabel">-</div>
                 </div>
             </div>
+
+            <div class="game-controls">
+                <button class="btn resign" id="resignBtn" disabled>🏳️ Resign</button>
+            </div>
         </div>
     </div>
 
@@ -285,6 +329,9 @@
             this.board = Array(15).fill(null).map(() => Array(15).fill(''));
             this.gameStarted = false;
             this.moveCount = 0;
+            this.moveHistory = []; // Track moves for diagonal lines
+            this.diagonalConnections = []; // Established diagonal connections
+            this.lastMoveCell = null;
 
             this.init();
         }
@@ -331,6 +378,7 @@
         setupEventListeners() {
             document.getElementById('createGameBtn').addEventListener('click', () => this.createGame());
             document.getElementById('copyLinkBtn').addEventListener('click', () => this.copyLink());
+            document.getElementById('resignBtn').addEventListener('click', () => this.resign());
         }
 
         createBoard() {
@@ -411,6 +459,7 @@
             this.gameStarted = true;
             document.getElementById('setupPanel').style.display = 'none';
             document.getElementById('gameSection').classList.add('active');
+            document.getElementById('resignBtn').disabled = false;
 
             document.getElementById('playerXLabel').textContent = this.myRole === 'X' ? 'You' : 'Opponent';
             document.getElementById('playerOLabel').textContent = this.myRole === 'O' ? 'You' : 'Opponent';
@@ -435,7 +484,12 @@
         makeMove(row, col) {
             this.board[row][col] = this.myRole;
             this.moveCount++;
+
+            // Track move history for diagonal lines
+            this.moveHistory.push({ row, col, player: this.myRole, moveNumber: this.moveCount });
+
             this.updateCell(row, col, this.myRole);
+            this.updateDiagonalLines();
 
             // Send move to server
             this.ws.send(JSON.stringify({
@@ -448,7 +502,7 @@
 
             // Check for win
             if (this.moveCount >= 29 && this.checkWin(this.myRole)) {
-                this.endGame(this.myRole);
+                this.endGame(this.myRole, 'connection');
                 return;
             }
 
@@ -459,11 +513,16 @@
         onOpponentMove(data) {
             this.board[data.row][data.col] = data.player;
             this.moveCount++;
+
+            // Track move history for diagonal lines
+            this.moveHistory.push({ row: data.row, col: data.col, player: data.player, moveNumber: this.moveCount });
+
             this.updateCell(data.row, data.col, data.player);
+            this.updateDiagonalLines();
 
             // Check for opponent win
             if (this.moveCount >= 29 && this.checkWin(data.player)) {
-                this.endGame(data.player);
+                this.endGame(data.player, 'connection');
                 return;
             }
 
@@ -472,10 +531,16 @@
         }
 
         updateCell(row, col, player) {
+            // Remove last-move highlight from previous cell
+            if (this.lastMoveCell) {
+                this.lastMoveCell.classList.remove('last-move');
+            }
+
             const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
             if (cell) {
                 cell.textContent = player;
-                cell.classList.add(player);
+                cell.classList.add(player, 'last-move');
+                this.lastMoveCell = cell;
             }
         }
 
@@ -549,33 +614,45 @@
             return false;
         }
 
-        endGame(winner) {
+        endGame(winner, reason = 'connection') {
             this.gameStarted = false;
+            document.getElementById('resignBtn').disabled = true;
 
             this.ws.send(JSON.stringify({
                 type: 'HVH_GAME_OVER',
                 winner: winner,
-                reason: 'connection'
+                reason: reason  // 'connection' or 'resignation' - important for ML
             }));
 
             const indicator = document.getElementById('turnIndicator');
             if (winner === this.myRole) {
-                indicator.textContent = '🎉 You Win!';
+                indicator.textContent = reason === 'resignation' ? '🎉 Opponent Resigned - You Win!' : '🎉 You Win!';
                 indicator.style.background = 'rgba(76,175,80,0.5)';
             } else {
-                indicator.textContent = '😔 You Lose';
+                indicator.textContent = reason === 'resignation' ? '🏳️ You Resigned' : '😔 You Lose';
                 indicator.style.background = 'rgba(244,67,54,0.3)';
+            }
+        }
+
+        resign() {
+            if (!this.gameStarted) return;
+
+            if (confirm('Are you sure you want to resign? This will count as a loss.')) {
+                // Winner is the opponent
+                const winner = this.myRole === 'X' ? 'O' : 'X';
+                this.endGame(winner, 'resignation');
             }
         }
 
         onGameEnded(data) {
             this.gameStarted = false;
+            document.getElementById('resignBtn').disabled = true;
             const indicator = document.getElementById('turnIndicator');
             if (data.winner === this.myRole) {
-                indicator.textContent = '🎉 You Win!';
+                indicator.textContent = data.reason === 'resignation' ? '🎉 Opponent Resigned - You Win!' : '🎉 You Win!';
                 indicator.style.background = 'rgba(76,175,80,0.5)';
             } else {
-                indicator.textContent = '😔 You Lose';
+                indicator.textContent = data.reason === 'resignation' ? '🏳️ Opponent Won by Connection' : '😔 You Lose';
                 indicator.style.background = 'rgba(244,67,54,0.3)';
             }
         }
@@ -599,6 +676,104 @@
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = 'Copy Link', 2000);
             });
+        }
+
+        // ===== DIAGONAL LINES VISUALIZATION =====
+        updateDiagonalLines() {
+            const svg = document.getElementById('diagonal-svg');
+            if (!svg) return;
+
+            // Find new diagonal connections from the latest move
+            this.findDiagonalConnections();
+
+            // Render all diagonal lines
+            this.renderDiagonalLines(svg);
+        }
+
+        findDiagonalConnections() {
+            // Process the most recent move for new diagonal connections
+            if (this.moveHistory.length === 0) return;
+
+            const lastMove = this.moveHistory[this.moveHistory.length - 1];
+            const { row, col, player, moveNumber } = lastMove;
+
+            // Check all 4 diagonal directions
+            const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+            for (const [dr, dc] of directions) {
+                const adjRow = row + dr;
+                const adjCol = col + dc;
+
+                // Check if valid and same player
+                if (adjRow < 0 || adjRow >= 15 || adjCol < 0 || adjCol >= 15) continue;
+                if (this.board[adjRow][adjCol] !== player) continue;
+
+                // Check if connection already exists
+                const exists = this.diagonalConnections.some(conn =>
+                    (conn.row1 === row && conn.col1 === col && conn.row2 === adjRow && conn.col2 === adjCol) ||
+                    (conn.row1 === adjRow && conn.col1 === adjCol && conn.row2 === row && conn.col2 === col)
+                );
+                if (exists) continue;
+
+                // Check for crossing with existing connections (first locks wins)
+                const crossRow = Math.min(row, adjRow);
+                const crossCol = Math.min(col, adjCol);
+                const isMainDiag = (dr === dc); // Both same sign = main diagonal direction
+
+                const wouldCross = this.diagonalConnections.some(conn => {
+                    const connCrossRow = Math.min(conn.row1, conn.row2);
+                    const connCrossCol = Math.min(conn.col1, conn.col2);
+                    const connIsMainDiag = ((conn.row2 - conn.row1) === (conn.col2 - conn.col1));
+
+                    // Same crossing point, opposite diagonal direction = crossing
+                    return connCrossRow === crossRow && connCrossCol === crossCol && connIsMainDiag !== isMainDiag;
+                });
+
+                if (!wouldCross) {
+                    this.diagonalConnections.push({
+                        row1: row, col1: col,
+                        row2: adjRow, col2: adjCol,
+                        player: player,
+                        moveNumber: moveNumber
+                    });
+                }
+            }
+        }
+
+        renderDiagonalLines(svg) {
+            // Clear existing lines
+            svg.innerHTML = '';
+
+            const board = document.getElementById('board');
+            if (!board) return;
+
+            const boardRect = board.getBoundingClientRect();
+            const cellSize = boardRect.width / 15;
+
+            // Set SVG viewBox
+            svg.setAttribute('viewBox', `0 0 ${boardRect.width} ${boardRect.height}`);
+            svg.style.width = boardRect.width + 'px';
+            svg.style.height = boardRect.height + 'px';
+
+            // Draw each diagonal connection
+            for (const conn of this.diagonalConnections) {
+                const x1 = (conn.col1 + 0.5) * cellSize;
+                const y1 = (conn.row1 + 0.5) * cellSize;
+                const x2 = (conn.col2 + 0.5) * cellSize;
+                const y2 = (conn.row2 + 0.5) * cellSize;
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke-width', '3');
+                line.setAttribute('stroke-linecap', 'round');
+                line.setAttribute('opacity', '0.8');
+                line.classList.add('diagonal-line-' + conn.player);
+
+                svg.appendChild(line);
+            }
         }
     }
 
