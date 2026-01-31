@@ -428,13 +428,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Wait a bit longer for scripts to settle, then start robust loading
     setTimeout(async () => {
-        // Check if this is an AI vs Human page (accept both orderings)
+        // Check if this is an AI vs Human page
+        // Detect by: title contains "vs ai", or page has the gameBoard element (unique to this page)
         const pageTitle = document.title.toLowerCase();
-        const h1Text = document.querySelector('h1')?.textContent?.toLowerCase() || '';
-        const isAIvsHumanPage = pageTitle.includes('human vs ai') ||
+        const hasGameBoard = document.getElementById('gameBoard') !== null;
+        const isAIvsHumanPage = pageTitle.includes('vs ai') ||
                               pageTitle.includes('ai vs human') ||
-                              h1Text.includes('human vs ai') ||
-                              h1Text.includes('ai vs human');
+                              pageTitle.includes('human vs ai') ||
+                              hasGameBoard;
         
         if (isAIvsHumanPage) {
             console.log('🎮 AI vs Human page detected - starting robust activation...');
