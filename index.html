@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connection Game - AI & Neural Network Training</title>
+    <title>Connection Game</title>
     <style>
         * {
             margin: 0;
@@ -17,123 +17,112 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             padding: 40px 20px;
             color: #fff;
         }
         h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
+            font-size: 2.8rem;
+            margin-bottom: 15px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         .subtitle {
             color: #a0a0a0;
-            margin-bottom: 40px;
-            font-size: 1.1rem;
+            margin-bottom: 50px;
+            font-size: 1.2rem;
         }
         .game-modes {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 25px;
-            max-width: 900px;
-            width: 100%;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 700px;
         }
         .game-card {
             background: rgba(255,255,255,0.1);
-            border-radius: 15px;
-            padding: 30px;
+            border-radius: 20px;
+            padding: 40px 35px;
             text-decoration: none;
             color: #fff;
             transition: all 0.3s ease;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.1);
+            width: 300px;
+            text-align: center;
         }
         .game-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-8px);
             background: rgba(255,255,255,0.15);
             border-color: rgba(255,255,255,0.3);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+        }
+        .game-card .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            display: block;
         }
         .game-card h2 {
-            font-size: 1.4rem;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
         }
         .game-card p {
             color: #b0b0b0;
             font-size: 0.95rem;
-            line-height: 1.5;
+            line-height: 1.6;
         }
-        .icon {
-            font-size: 1.8rem;
+        .game-card.ai {
+            border-color: rgba(76, 175, 80, 0.3);
         }
-        .badge {
-            background: #4CAF50;
-            color: white;
-            font-size: 0.7rem;
-            padding: 3px 8px;
-            border-radius: 10px;
-            margin-left: 10px;
+        .game-card.ai:hover {
+            border-color: rgba(76, 175, 80, 0.6);
+            box-shadow: 0 15px 40px rgba(76, 175, 80, 0.2);
         }
-        .badge.ml {
-            background: #2196F3;
+        .game-card.human {
+            border-color: rgba(33, 150, 243, 0.3);
         }
-        .features {
-            margin-top: 40px;
-            max-width: 900px;
-            width: 100%;
-            background: rgba(255,255,255,0.05);
-            border-radius: 15px;
-            padding: 25px;
+        .game-card.human:hover {
+            border-color: rgba(33, 150, 243, 0.6);
+            box-shadow: 0 15px 40px rgba(33, 150, 243, 0.2);
         }
-        .features h3 {
-            margin-bottom: 15px;
-            color: #4CAF50;
+        .rules {
+            margin-top: 50px;
+            max-width: 600px;
+            text-align: center;
+            color: #888;
+            font-size: 0.9rem;
+            line-height: 1.6;
         }
-        .features ul {
-            list-style: none;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-        }
-        .features li {
-            color: #b0b0b0;
-            padding: 5px 0;
-        }
-        .features li::before {
-            content: "✓ ";
-            color: #4CAF50;
+        .rules h3 {
+            color: #aaa;
+            margin-bottom: 10px;
+            font-size: 1rem;
         }
     </style>
 </head>
 <body>
     <h1>🎮 Connection Game</h1>
-    <p class="subtitle">AI vs Human with Neural Network Training</p>
+    <p class="subtitle">Connect your borders to win!</p>
 
     <div class="game-modes">
-        <a href="ai-vs-human.html" class="game-card">
-            <h2><span class="icon">🤖</span> AI vs Human <span class="badge ml">Recording</span></h2>
-            <p>Play against the AI. Your moves are recorded as "teacher" data for neural network training.</p>
+        <a href="ai-vs-human.html" class="game-card ai">
+            <span class="icon">🤖</span>
+            <h2>Human vs AI</h2>
+            <p>Challenge the AI opponent. You play as O (horizontal), AI plays as X (vertical).</p>
         </a>
 
-        <a href="ai-vs-ai.html" class="game-card">
-            <h2><span class="icon">⚔️</span> AI vs AI <span class="badge">Auto-Play</span></h2>
-            <p>Watch two AIs compete. Auto-play mode generates training data. Train neural network in-browser.</p>
+        <a href="human-vs-human.html" class="game-card human">
+            <span class="icon">👥</span>
+            <h2>Human vs Human</h2>
+            <p>Play against a friend online. Create a game and share the link to invite them.</p>
         </a>
     </div>
 
-    <div class="features">
-        <h3>Features</h3>
-        <ul>
-            <li>15x15 connection game board</li>
-            <li>Gap registry AI system</li>
-            <li>L/I/Diagonal pattern detection</li>
-            <li>Game recording for ML</li>
-            <li>Export to CSV/JSON</li>
-            <li>Neural network training</li>
-            <li>TensorFlow.js in-browser</li>
-            <li>Model persistence (IndexedDB)</li>
-        </ul>
+    <div class="rules">
+        <h3>How to Play</h3>
+        <p>
+            X (vertical) wins by connecting top to bottom.<br>
+            O (horizontal) wins by connecting left to right.<br>
+            Players take turns placing their mark on the 15×15 board.
+        </p>
     </div>
 </body>
 </html>

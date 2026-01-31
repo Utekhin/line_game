@@ -1,20 +1,19 @@
-# Connection Game - AI with Neural Network Training
+# Connection Game - Sessions Branch
 
-A 15x15 connection game where X connects top-to-bottom and O connects left-to-right. Features AI opponents, game recording for ML training, and in-browser neural network training.
+A 15x15 connection game with session support, game recording, and admin interface.
 
 ## Game Modes
 
-- **AI vs Human** - Play against the AI. Your moves are recorded as "teacher" data for neural network training.
-- **AI vs AI** - Watch two AIs compete with auto-play mode for generating training data.
+- **Human vs AI** - Play against the AI (you are O, AI is X)
+- **Human vs Human** - Play against a friend online via shareable link
 
 ## Features
 
-- Gap registry AI with L/I/Diagonal pattern detection
-- Game recording with export to CSV/JSON
-- Neural network AI system (TensorFlow.js)
-- In-browser model training
-- Model persistence (IndexedDB)
-- Hybrid fallback (neural + heuristics)
+- Multi-user session support
+- Automatic game recording (saved to server)
+- Admin interface for downloading recorded games
+- Human moves marked as "teacher" for ML training
+- WebSocket-based real-time multiplayer
 
 ## Local Development
 
@@ -23,63 +22,46 @@ npm install
 npm start
 ```
 
-Open http://localhost:3000
+Open http://localhost:8000
+
+## Pages
+
+- `/` - Home page (choose game mode)
+- `/ai-vs-human.html` - Play vs AI
+- `/human-vs-human.html` - Play vs friend
+- `/admin.html` - Admin panel (download recorded games)
+
+## Environment Variables
+
+- `PORT` - Server port (default: 8000)
+- `ADMIN_PASSWORD` - Admin panel password (default: admin123)
+- `DATA_DIR` - Directory for recorded games (default: ./data)
 
 ## Deploy to Koyeb
 
-### Option 1: Deploy from GitHub
+1. Create new App → Deploy from GitHub
+2. Select `Utekhin/line_game`, branch `sessions`
+3. Builder: Dockerfile
+4. Set environment variable: `ADMIN_PASSWORD=your_secure_password`
+5. Deploy
 
-1. Go to [Koyeb Console](https://app.koyeb.com)
-2. Create new App → Deploy from GitHub
-3. Select repository: `Utekhin/line_game`
-4. Select branch: `recorder`
-5. Build settings:
-   - Builder: Buildpack
-   - Run command: `npm start`
-6. Environment variables:
-   - `PORT`: 8000 (Koyeb uses 8000 by default)
-7. Deploy
+## Admin API
 
-### Option 2: Deploy with Koyeb CLI
+All admin endpoints require `?password=ADMIN_PASSWORD`
 
-```bash
-# Install Koyeb CLI
-brew install koyeb/tap/koyeb
+- `GET /api/admin/stats` - Get game statistics
+- `GET /api/admin/games` - Get recent games
+- `GET /api/admin/download?format=json` - Download all games as JSON
+- `GET /api/admin/download?format=csv` - Download all games as CSV
 
-# Login
-koyeb login
+## Data Format
 
-# Deploy
-koyeb app create line-game --git github.com/Utekhin/line_game --git-branch recorder --ports 8000:http --routes /:8000
-```
-
-## ML Training Workflow
-
-1. **Record games**: Play AI vs Human (human moves weighted 2x as "teacher") or use AI vs AI auto-play
-2. **Export data**: Click "Export JSON" to download training data
-3. **Train model**: In AI vs AI page, use the Neural AI Training panel
-4. **Save model**: Model persists in browser IndexedDB
-5. **Export model**: Download trained model files for backup
-
-## Project Structure
-
-```
-├── index.html              # Landing page
-├── ai-vs-human.html        # Human vs AI mode
-├── ai-vs-ai.html           # AI vs AI mode with training UI
-├── server.js               # Node.js static file server
-├── package.json            # Dependencies
-└── js/
-    ├── neural-ai/          # Neural network modules
-    │   ├── feature-extractor.js
-    │   ├── model-architecture.js
-    │   ├── neural-network-ai.js
-    │   ├── training-manager.js
-    │   └── model-storage.js
-    ├── simple-chain.js     # Main AI logic
-    ├── gap-registry.js     # Gap detection system
-    └── ...                 # Other game modules
-```
+Recorded games include:
+- `gameId` - Unique identifier
+- `gameType` - "human-vs-ai" or "human-vs-human"
+- `winner` - "X", "O", or null
+- `moves` - Array of moves with board state
+- Each move has `source`: "teacher" (human) or "ai"
 
 ## License
 

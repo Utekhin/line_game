@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Game - Human vs Human</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            display: inline-block;
+            color: #888;
+            text-decoration: none;
+            margin-bottom: 20px;
+        }
+        .back-link:hover { color: #fff; }
+
+        /* Setup Panel */
+        .setup-panel {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .setup-panel h2 { margin-bottom: 20px; }
+        .setup-panel p { color: #aaa; margin-bottom: 15px; }
+        .btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .btn:hover { background: #1976D2; }
+        .btn:disabled { background: #666; cursor: not-allowed; }
+        .btn.secondary { background: #4CAF50; }
+        .btn.secondary:hover { background: #388E3C; }
+
+        /* Game Code Display */
+        .game-code {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .game-code .code {
+            font-size: 2rem;
+            font-family: monospace;
+            color: #4CAF50;
+            letter-spacing: 3px;
+        }
+        .game-code .link {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            word-break: break-all;
+            font-size: 0.9rem;
+        }
+        .copy-btn {
+            background: #FF9800;
+            margin-top: 10px;
+        }
+
+        /* Status Messages */
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .status.waiting { background: rgba(255,152,0,0.3); }
+        .status.connected { background: rgba(76,175,80,0.3); }
+        .status.error { background: rgba(244,67,54,0.3); }
+
+        /* Game Board */
+        .game-section {
+            display: none;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+        }
+        .game-section.active { display: block; }
+        .board-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(15, 30px);
+            gap: 1px;
+            background: #333;
+            padding: 1px;
+            border-radius: 5px;
+        }
+        .cell {
+            width: 30px;
+            height: 30px;
+            background: #1a1a2e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .cell:hover { background: #2a2a4e; }
+        .cell.X { color: #2196F3; background: rgba(33,150,243,0.2); }
+        .cell.O { color: #4CAF50; background: rgba(76,175,80,0.2); }
+        .cell.disabled { cursor: not-allowed; }
+
+        /* Turn Indicator */
+        .turn-indicator {
+            text-align: center;
+            padding: 15px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .turn-indicator.your-turn { background: rgba(76,175,80,0.3); }
+        .turn-indicator.opponent-turn { background: rgba(255,152,0,0.3); }
+
+        /* Game Info */
+        .game-info {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        .player-info {
+            text-align: center;
+        }
+        .player-info .role {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .player-info.X .role { color: #2196F3; }
+        .player-info.O .role { color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        <h1>👥 Human vs Human</h1>
+
+        <!-- Setup Panel -->
+        <div class="setup-panel" id="setupPanel">
+            <div id="createSection">
+                <h2>Create a New Game</h2>
+                <p>Generate a game link to share with your friend</p>
+                <button class="btn" id="createGameBtn">Create Game</button>
+            </div>
+
+            <div id="waitingSection" style="display:none;">
+                <h2>Waiting for Opponent</h2>
+                <div class="game-code">
+                    <div>Game Code:</div>
+                    <div class="code" id="gameCodeDisplay">---</div>
+                    <div class="link" id="gameLinkDisplay">---</div>
+                    <button class="btn copy-btn" id="copyLinkBtn">Copy Link</button>
+                </div>
+                <div class="status waiting">Waiting for opponent to join...</div>
+            </div>
+
+            <div id="joinSection" style="display:none;">
+                <h2>Joining Game</h2>
+                <div class="game-code">
+                    <div>Game Code:</div>
+                    <div class="code" id="joinGameCode">---</div>
+                </div>
+                <div class="status waiting" id="joinStatus">Connecting...</div>
+            </div>
+        </div>
+
+        <!-- Game Section -->
+        <div class="game-section" id="gameSection">
+            <div class="turn-indicator" id="turnIndicator">Waiting...</div>
+
+            <div class="board-container">
+                <div class="board" id="board"></div>
+            </div>
+
+            <div class="game-info">
+                <div class="player-info X">
+                    <div class="role">X</div>
+                    <div>Vertical (Top↔Bottom)</div>
+                    <div id="playerXLabel">-</div>
+                </div>
+                <div class="player-info O">
+                    <div class="role">O</div>
+                    <div>Horizontal (Left↔Right)</div>
+                    <div id="playerOLabel">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    class HumanVsHumanGame {
+        constructor() {
+            this.ws = null;
+            this.gameCode = null;
+            this.myRole = null;
+            this.currentPlayer = 'X';
+            this.board = Array(15).fill(null).map(() => Array(15).fill(''));
+            this.gameStarted = false;
+            this.moveCount = 0;
+
+            this.init();
+        }
+
+        init() {
+            // Check if joining via URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameCode = urlParams.get('game');
+
+            if (gameCode) {
+                this.showJoinSection(gameCode);
+            }
+
+            this.connectWebSocket();
+            this.setupEventListeners();
+            this.createBoard();
+        }
+
+        connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            this.ws.onopen = () => {
+                console.log('WebSocket connected');
+
+                // If joining, send join request
+                const urlParams = new URLSearchParams(window.location.search);
+                const gameCode = urlParams.get('game');
+                if (gameCode) {
+                    this.joinGame(gameCode);
+                }
+            };
+
+            this.ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                this.handleMessage(data);
+            };
+
+            this.ws.onclose = () => {
+                console.log('WebSocket disconnected');
+            };
+        }
+
+        setupEventListeners() {
+            document.getElementById('createGameBtn').addEventListener('click', () => this.createGame());
+            document.getElementById('copyLinkBtn').addEventListener('click', () => this.copyLink());
+        }
+
+        createBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+
+            for (let row = 0; row < 15; row++) {
+                for (let col = 0; col < 15; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.addEventListener('click', () => this.handleCellClick(row, col));
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        createGame() {
+            this.ws.send(JSON.stringify({ type: 'CREATE_HVH_GAME' }));
+        }
+
+        joinGame(gameCode) {
+            this.gameCode = gameCode;
+            this.ws.send(JSON.stringify({
+                type: 'JOIN_HVH_GAME',
+                gameCode: gameCode
+            }));
+        }
+
+        handleMessage(data) {
+            switch (data.type) {
+                case 'HVH_GAME_CREATED':
+                    this.onGameCreated(data);
+                    break;
+                case 'HVH_GAME_JOINED':
+                    this.onGameJoined(data);
+                    break;
+                case 'HVH_GAME_STARTED':
+                    this.onGameStarted(data);
+                    break;
+                case 'HVH_OPPONENT_MOVE':
+                    this.onOpponentMove(data);
+                    break;
+                case 'HVH_GAME_ENDED':
+                    this.onGameEnded(data);
+                    break;
+                case 'HVH_JOIN_ERROR':
+                    this.onJoinError(data);
+                    break;
+                case 'HVH_OPPONENT_DISCONNECTED':
+                    this.onOpponentDisconnected();
+                    break;
+            }
+        }
+
+        onGameCreated(data) {
+            this.gameCode = data.gameCode;
+            this.myRole = data.role;
+
+            document.getElementById('createSection').style.display = 'none';
+            document.getElementById('waitingSection').style.display = 'block';
+            document.getElementById('gameCodeDisplay').textContent = data.gameCode;
+
+            const link = `${window.location.origin}/human-vs-human.html?game=${data.gameCode}`;
+            document.getElementById('gameLinkDisplay').textContent = link;
+        }
+
+        onGameJoined(data) {
+            this.gameCode = data.gameCode;
+            this.myRole = data.role;
+            document.getElementById('joinGameCode').textContent = data.gameCode;
+            document.getElementById('joinStatus').textContent = 'Connected! Starting game...';
+            document.getElementById('joinStatus').className = 'status connected';
+        }
+
+        onGameStarted(data) {
+            this.gameStarted = true;
+            document.getElementById('setupPanel').style.display = 'none';
+            document.getElementById('gameSection').classList.add('active');
+
+            document.getElementById('playerXLabel').textContent = this.myRole === 'X' ? 'You' : 'Opponent';
+            document.getElementById('playerOLabel').textContent = this.myRole === 'O' ? 'You' : 'Opponent';
+
+            this.updateTurnIndicator();
+        }
+
+        showJoinSection(gameCode) {
+            document.getElementById('createSection').style.display = 'none';
+            document.getElementById('joinSection').style.display = 'block';
+            document.getElementById('joinGameCode').textContent = gameCode;
+        }
+
+        handleCellClick(row, col) {
+            if (!this.gameStarted) return;
+            if (this.currentPlayer !== this.myRole) return;
+            if (this.board[row][col] !== '') return;
+
+            this.makeMove(row, col);
+        }
+
+        makeMove(row, col) {
+            this.board[row][col] = this.myRole;
+            this.moveCount++;
+            this.updateCell(row, col, this.myRole);
+
+            // Send move to server
+            this.ws.send(JSON.stringify({
+                type: 'HVH_MOVE',
+                row: row,
+                col: col,
+                player: this.myRole,
+                boardState: this.getBoardState()
+            }));
+
+            // Check for win
+            if (this.moveCount >= 29 && this.checkWin(this.myRole)) {
+                this.endGame(this.myRole);
+                return;
+            }
+
+            this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+            this.updateTurnIndicator();
+        }
+
+        onOpponentMove(data) {
+            this.board[data.row][data.col] = data.player;
+            this.moveCount++;
+            this.updateCell(data.row, data.col, data.player);
+
+            // Check for opponent win
+            if (this.moveCount >= 29 && this.checkWin(data.player)) {
+                this.endGame(data.player);
+                return;
+            }
+
+            this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+            this.updateTurnIndicator();
+        }
+
+        updateCell(row, col, player) {
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            if (cell) {
+                cell.textContent = player;
+                cell.classList.add(player);
+            }
+        }
+
+        updateTurnIndicator() {
+            const indicator = document.getElementById('turnIndicator');
+            const isMyTurn = this.currentPlayer === this.myRole;
+
+            indicator.textContent = isMyTurn ? "Your turn!" : "Opponent's turn...";
+            indicator.className = 'turn-indicator ' + (isMyTurn ? 'your-turn' : 'opponent-turn');
+        }
+
+        getBoardState() {
+            let state = '';
+            for (let row = 0; row < 15; row++) {
+                for (let col = 0; col < 15; col++) {
+                    const cell = this.board[row][col];
+                    state += cell === 'X' ? '1' : (cell === 'O' ? '2' : '0');
+                }
+            }
+            return state;
+        }
+
+        checkWin(player) {
+            // Simplified win check - just check if connected
+            const visited = new Set();
+            const queue = [];
+
+            if (player === 'X') {
+                // X needs top to bottom
+                for (let col = 0; col < 15; col++) {
+                    if (this.board[0][col] === 'X') {
+                        queue.push([0, col]);
+                    }
+                }
+                while (queue.length > 0) {
+                    const [r, c] = queue.shift();
+                    const key = `${r},${c}`;
+                    if (visited.has(key)) continue;
+                    visited.add(key);
+                    if (r === 14) return true;
+
+                    const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
+                    for (const [nr, nc] of neighbors) {
+                        if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && this.board[nr][nc] === 'X') {
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            } else {
+                // O needs left to right
+                for (let row = 0; row < 15; row++) {
+                    if (this.board[row][0] === 'O') {
+                        queue.push([row, 0]);
+                    }
+                }
+                while (queue.length > 0) {
+                    const [r, c] = queue.shift();
+                    const key = `${r},${c}`;
+                    if (visited.has(key)) continue;
+                    visited.add(key);
+                    if (c === 14) return true;
+
+                    const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
+                    for (const [nr, nc] of neighbors) {
+                        if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15 && this.board[nr][nc] === 'O') {
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        endGame(winner) {
+            this.gameStarted = false;
+
+            this.ws.send(JSON.stringify({
+                type: 'HVH_GAME_OVER',
+                winner: winner,
+                reason: 'connection'
+            }));
+
+            const indicator = document.getElementById('turnIndicator');
+            if (winner === this.myRole) {
+                indicator.textContent = '🎉 You Win!';
+                indicator.style.background = 'rgba(76,175,80,0.5)';
+            } else {
+                indicator.textContent = '😔 You Lose';
+                indicator.style.background = 'rgba(244,67,54,0.3)';
+            }
+        }
+
+        onGameEnded(data) {
+            this.gameStarted = false;
+            const indicator = document.getElementById('turnIndicator');
+            if (data.winner === this.myRole) {
+                indicator.textContent = '🎉 You Win!';
+                indicator.style.background = 'rgba(76,175,80,0.5)';
+            } else {
+                indicator.textContent = '😔 You Lose';
+                indicator.style.background = 'rgba(244,67,54,0.3)';
+            }
+        }
+
+        onJoinError(data) {
+            document.getElementById('joinStatus').textContent = 'Error: ' + data.error;
+            document.getElementById('joinStatus').className = 'status error';
+        }
+
+        onOpponentDisconnected() {
+            const indicator = document.getElementById('turnIndicator');
+            indicator.textContent = '⚠️ Opponent disconnected';
+            indicator.style.background = 'rgba(255,152,0,0.5)';
+            this.gameStarted = false;
+        }
+
+        copyLink() {
+            const link = document.getElementById('gameLinkDisplay').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                const btn = document.getElementById('copyLinkBtn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy Link', 2000);
+            });
+        }
+    }
+
+    // Initialize game
+    const game = new HumanVsHumanGame();
+    </script>
+</body>
+</html>
