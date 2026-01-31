@@ -1,7 +1,7 @@
 {
-  "name": "connection-game-sessions",
+  "name": "span-game",
   "version": "2.0.0",
-  "description": "Connection Game with multi-user sessions, game recording, and admin interface",
+  "description": "Span - Be the first to connect borders. Strategy game with multi-user sessions and game recording.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

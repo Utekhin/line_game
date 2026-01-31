@@ -1,6 +1,6 @@
-# Connection Game - Sessions Branch
+# Span - Be the first to connect borders
 
-A 15x15 connection game with session support, game recording, and admin interface.
+A strategy connection game on 15x15 or 25x25 board with multiplayer sessions, game recording, and admin interface.
 
 ## Game Modes
 
