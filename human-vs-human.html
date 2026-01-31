@@ -158,12 +158,53 @@
         }
         .player-info.X .role { color: #2196F3; }
         .player-info.O .role { color: #4CAF50; }
+
+        /* Game rules */
+        .game-rules {
+            text-align: center;
+            color: #888;
+            margin-bottom: 25px;
+        }
+        .x-text { color: #2196F3; font-weight: bold; }
+        .o-text { color: #4CAF50; font-weight: bold; }
+
+        /* Border indicators */
+        .board-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .board-with-sides {
+            display: flex;
+            align-items: center;
+        }
+        .border-indicator {
+            font-weight: bold;
+            font-size: 10px;
+            letter-spacing: 1px;
+            opacity: 0.6;
+        }
+        .top-border, .bottom-border {
+            color: #2196F3;
+            text-align: center;
+            padding: 5px 0;
+        }
+        .left-border, .right-border {
+            color: #4CAF50;
+            line-height: 2.05;
+            padding: 0 6px;
+            font-size: 9px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="/" class="back-link">← Back to Home</a>
         <h1>👥 Human vs Human</h1>
+        <p class="game-rules">
+            <span class="x-text">X</span> connects top ↔ bottom |
+            <span class="o-text">O</span> connects left ↔ right
+        </p>
 
         <!-- Setup Panel -->
         <div class="setup-panel" id="setupPanel">
@@ -198,8 +239,16 @@
         <div class="game-section" id="gameSection">
             <div class="turn-indicator" id="turnIndicator">Waiting...</div>
 
-            <div class="board-container">
-                <div class="board" id="board"></div>
+            <div class="board-wrapper">
+                <div class="border-indicator top-border">X X X X X X X X X X X X X X X</div>
+                <div class="board-with-sides">
+                    <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                    <div class="board-container">
+                        <div class="board" id="board"></div>
+                    </div>
+                    <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                </div>
+                <div class="border-indicator bottom-border">X X X X X X X X X X X X X X X</div>
             </div>
 
             <div class="game-info">

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connection Game - AI vs Human (Gap Registry)</title>
+    <title>Connection Game - Human vs AI</title>
     <style>
 :root {
   --cell-size: 40px;
@@ -550,11 +550,44 @@ button:disabled {
 .recording-stats strong {
   color: #333;
 }
+
+/* Border indicators */
+.board-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.board-with-sides {
+  display: flex;
+  align-items: center;
+}
+.border-indicator {
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 2px;
+  opacity: 0.7;
+}
+.top-border, .bottom-border {
+  color: #2196F3;
+  text-align: center;
+  padding: 5px 0;
+}
+.left-border, .right-border {
+  color: #4CAF50;
+  line-height: 1.75;
+  padding: 0 8px;
+  font-size: 11px;
+}
 </style>
 </head>
 <body>
-    <h1>Connection Game - AI vs Human (Gap Registry)</h1>
-    
+    <a href="/" style="color:#888;text-decoration:none;display:block;margin-bottom:10px;">← Back to Home</a>
+    <h1>Connection Game - Human vs AI</h1>
+    <p style="text-align:center;color:#666;margin-bottom:20px;">
+        <span style="color:#2196F3;font-weight:bold;">X</span> connects top ↔ bottom |
+        <span style="color:#4CAF50;font-weight:bold;">O</span> connects left ↔ right
+    </p>
+
     <div class="game-container">
         
         <!-- Game Board -->
@@ -577,10 +610,18 @@ button:disabled {
                 </div>
             </div>
             
-            <div class="board-container">
-                <div class="board-grid" id="gameBoard"></div>
-                <svg id="diagonal-lines-svg"></svg>
-                <svg id="path-overlay"></svg>
+            <div class="board-wrapper">
+                <div class="border-indicator top-border">X X X X X X X X X X X X X X X</div>
+                <div class="board-with-sides">
+                    <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                    <div class="board-container">
+                        <div class="board-grid" id="gameBoard"></div>
+                        <svg id="diagonal-lines-svg"></svg>
+                        <svg id="path-overlay"></svg>
+                    </div>
+                    <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                </div>
+                <div class="border-indicator bottom-border">X X X X X X X X X X X X X X X</div>
             </div>
         </div>
         
@@ -593,13 +634,6 @@ button:disabled {
 
             <div class="controls">
                 <button id="mainButton">Start Game</button>
-            </div>
-
-            <!-- Debug Controls -->
-            <div class="debug-controls">
-                <button id="resetLayoutButton" class="debug-button">Reset Layout</button>
-                <button id="checkStabilityButton" class="debug-button">Check Stability</button>
-                <button id="debugButton" class="debug-button">Debug State</button>
             </div>
         </div>
         
