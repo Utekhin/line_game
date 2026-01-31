@@ -35,10 +35,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/connection-line-game.git"
+    "url": "https://github.com/Utekhin/line_game.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/connection-line-game/issues"
+    "url": "https://github.com/Utekhin/line_game/issues"
   },
-  "homepage": "https://github.com/yourusername/connection-line-game#readme"
+  "homepage": "https://github.com/Utekhin/line_game#readme"
 }

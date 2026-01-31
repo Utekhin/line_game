@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI vs AI - Connection Game</title>
+    <style>
+        body {
+            background: #f5f5f5;
+            color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        header {
+            text-align: center;
+            padding: 10px 0;
+            margin-bottom: 15px;
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+            color: #444;
+        }
+        .game-container {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            max-width: 1100px;
+            margin: 0 auto;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #f8f8f8;
+            border-bottom: 1px solid #e0e0e0;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .game-status {
+            display: flex;
+            gap: 20px;
+        }
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .status-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 2px;
+        }
+        .status-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #555;
+        }
+        .current-player-x { color: #5a6a6f; }
+        .current-player-o { color: #5e7a63; }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        .control-group label {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        button {
+            padding: 10px 18px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #f0f0f0;
+            color: #555;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover:not(:disabled) {
+            background: #e0e0e0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        button:disabled {
+            background: #f0f0f0;
+            color: #aaa;
+            cursor: not-allowed;
+        }
+        button.primary {
+            background: #5a6a6f;
+            color: white;
+            border-color: #4a5a5f;
+        }
+        button.primary:hover:not(:disabled) {
+            background: #4a5a5f;
+        }
+        button.recording {
+            background: #e74c3c;
+            color: white;
+            border-color: #c0392b;
+            animation: pulse-recording 1.5s infinite;
+        }
+        button.auto-playing {
+            background: #27ae60;
+            color: white;
+            border-color: #1e8449;
+            animation: pulse-recording 1.5s infinite;
+        }
+        @keyframes pulse-recording {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .board-section {
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+        .board-container {
+            position: relative;
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            width: 650px;
+            height: 650px;
+            flex-shrink: 0;
+        }
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+        .cell {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.7rem;
+        }
+        .cell.x { background: radial-gradient(circle, #6c7b7f, #5a6a6f); }
+        .cell.o { background: radial-gradient(circle, #708b75, #5e7a63); }
+        .cell.last-move { box-shadow: inset 0 0 0 3px #f1c40f; }
+        .cell-number {
+            position: absolute;
+            font-size: 7px;
+            color: #bbb;
+            top: 1px;
+            left: 2px;
+            pointer-events: none;
+        }
+        .move-text {
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: white;
+            z-index: 2;
+        }
+        #diagonal-lines-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .diagonal-line { stroke-width: 2; stroke-linecap: round; stroke-opacity: 0.7; }
+        .diagonal-line-x { stroke: #6c7b7f !important; }
+        .diagonal-line-o { stroke: #708b75 !important; }
+        .side-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 300px;
+        }
+        .panel-section {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .panel-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+            color: #555;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 5px;
+        }
+        .game-log {
+            height: 250px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+            font-family: monospace;
+            background: #fff;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .log-entry.x-move { color: #5a6a6f; }
+        .log-entry.o-move { color: #5e7a63; }
+        .log-entry.system { color: #888; font-style: italic; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat-box {
+            background: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-box.x { border-left: 3px solid #5a6a6f; }
+        .stat-box.o { border-left: 3px solid #5e7a63; }
+        .stat-label { font-size: 0.75rem; color: #888; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; color: #444; }
+        .recording-indicator {
+            display: none;
+            align-items: center;
+            gap: 5px;
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .recording-indicator.active { display: flex; }
+        .recording-dot {
+            width: 10px;
+            height: 10px;
+            background: #e74c3c;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .mode-selector {
+            display: flex;
+            gap: 5px;
+        }
+        .mode-selector button {
+            padding: 8px 15px;
+        }
+        .mode-selector button.active {
+            background: #5a6a6f;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>AI vs AI - Connection Game</h1>
+        <p>Watch two AI strategies compete | <span id="recordingIndicator" class="recording-indicator"><span class="recording-dot"></span> RECORDING</span></p>
+    </header>
+
+    <div class="game-container">
+        <div class="game-header">
+            <div class="game-status">
+                <div class="status-item">
+                    <div class="status-label">STATUS</div>
+                    <div id="gameStatus" class="status-value">Ready</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">CURRENT</div>
+                    <div id="currentPlayer" class="status-value">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">MOVES</div>
+                    <div id="moveCount" class="status-value">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">GAMES</div>
+                    <div id="gamesPlayed" class="status-value">0</div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="mode-selector">
+                    <button id="autoModeBtn" class="active">Auto</button>
+                    <button id="stepModeBtn">Step</button>
+                </div>
+
+                <div class="control-group">
+                    <label>Delay:</label>
+                    <input type="range" id="gameSpeed" min="100" max="2000" value="500" step="100">
+                    <span id="speedValue">0.5s</span>
+                </div>
+
+                <button id="startBtn" class="primary">Start Game</button>
+                <button id="autoPlayBtn" class="primary" title="Auto-play and record multiple games">Auto-Play</button>
+                <button id="stepBtn" disabled>Next Move</button>
+                <button id="stopBtn" disabled>Stop All</button>
+                <button id="exportBtn">Export CSV</button>
+                <button id="exportJsonBtn">Export JSON</button>
+            </div>
+        </div>
+
+        <div class="board-section">
+            <div class="board-container">
+                <svg id="diagonal-lines-svg"></svg>
+                <div id="gameBoard" class="board-grid"></div>
+            </div>
+
+            <div class="side-panel">
+                <div class="panel-section">
+                    <h3>Player Stats</h3>
+                    <div class="stats-grid">
+                        <div class="stat-box x">
+                            <div class="stat-label">X (Vertical)</div>
+                            <div id="xMoves" class="stat-value">0</div>
+                            <div id="xPersonality" class="stat-label" style="margin-top:4px;font-style:italic;"></div>
+                        </div>
+                        <div class="stat-box o">
+                            <div class="stat-label">O (Horizontal)</div>
+                            <div id="oMoves" class="stat-value">0</div>
+                            <div id="oPersonality" class="stat-label" style="margin-top:4px;font-style:italic;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Game Log</h3>
+                    <div id="gameLog" class="game-log"></div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Recording Stats</h3>
+                    <div id="recordingStats">
+                        <div>Games recorded: <strong id="gamesRecorded">0</strong></div>
+                        <div>Total moves: <strong id="totalMoves">0</strong></div>
+                        <div>X wins: <strong id="xWins">0</strong> | O wins: <strong id="oWins">0</strong></div>
+                        <div style="margin-top:8px;font-size:0.8rem;color:#888;">
+                            Auto-play: <span id="autoPlayStatus">OFF</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Neural AI Training</h3>
+                    <div id="trainingSection">
+                        <div style="margin-bottom:10px;">
+                            <label>Training file:</label>
+                            <input type="file" id="trainingFile" accept=".json,.csv" style="font-size:0.8rem;">
+                        </div>
+                        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                            <button id="trainModelBtn" style="padding:8px 12px;font-size:0.85rem;">Train Model</button>
+                            <button id="saveModelBtn" style="padding:8px 12px;font-size:0.85rem;">Save Model</button>
+                            <button id="exportModelBtn" style="padding:8px 12px;font-size:0.85rem;">Export Model</button>
+                        </div>
+                        <div id="trainingProgress" style="margin-top:8px;font-size:0.8rem;color:#666;"></div>
+                        <div id="modelInfo" style="margin-top:5px;font-size:0.75rem;color:#888;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts in correct order -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.x/dist/tf.min.js"></script>
+    <script src="js/ai-vs-h-game-core.js"></script>
+    <script src="js/game-diagonal-lines.js"></script>
+    <script src="js/gap-registry.js"></script>
+    <script src="js/chain-fragment-analyzer.js"></script>
+    <script src="js/chain-head-manager.js"></script>
+    <script src="js/ai-personality-config.js"></script>
+    <script src="js/simple-chain.js"></script>
+    <script src="js/game-export.js"></script>
+
+    <!-- Neural AI modules -->
+    <script src="js/neural-ai/feature-extractor.js"></script>
+    <script src="js/neural-ai/model-architecture.js"></script>
+    <script src="js/neural-ai/model-storage.js"></script>
+    <script src="js/neural-ai/training-manager.js"></script>
+    <script src="js/neural-ai/neural-network-ai.js"></script>
+
+    <script>
+    // AI vs AI Controller with Auto-Play and ML Recording
+    class AIvsAIController {
+        constructor() {
+            this.boardSize = 15;
+            this.gameCore = null;
+            this.diagonalLines = null;
+            this.exportManager = null;
+
+            this.aiX = null;  // X player AI
+            this.aiO = null;  // O player AI
+
+            this.currentPlayer = 'X';
+            this.gameState = 'ready'; // ready, running, paused, complete
+            this.mode = 'auto'; // auto or step
+            this.moveDelay = 500; // Default 0.5s
+            this.gameLoopTimeout = null;
+
+            this.gamesPlayed = 0;
+            this.gamesRecorded = 0;
+            this.totalMovesRecorded = 0;
+            this.isRecording = true; // Recording ON by default
+            this.isAutoPlaying = false; // Continuous auto-play mode
+
+            // Statistics
+            this.xWins = 0;
+            this.oWins = 0;
+
+            // ML Training data storage
+            this.recordedGames = [];
+            this.currentGameMoves = [];
+
+            this.initialize();
+        }
+
+        initialize() {
+            console.log('Initializing AI vs AI Controller...');
+
+            // Initialize game core
+            this.gameCore = new ConnectionGameCore(this.boardSize);
+
+            // Initialize diagonal lines
+            const svgElement = document.getElementById('diagonal-lines-svg');
+            if (svgElement) {
+                this.diagonalLines = new ConnectionGameDiagonalLines(this.gameCore, svgElement);
+                this.gameCore.setDiagonalLinesManager(this.diagonalLines);
+            }
+
+            // Initialize export manager
+            if (typeof GameExportManager !== 'undefined') {
+                this.exportManager = new GameExportManager(this.gameCore);
+            }
+
+            // Initialize AIs
+            this.initializeAIs();
+
+            // Create board
+            this.createBoard();
+
+            // Setup event listeners
+            this.setupEventListeners();
+
+            // Recording is ON by default
+            document.getElementById('recordingIndicator').classList.add('active');
+
+            this.log('System ready. Click "Start Game" for single game or "Auto-Play" for continuous recording.', 'system');
+        }
+
+        initializeAIs() {
+            // Initialize gap registry for the AIs
+            let gapRegistry = null;
+            if (typeof FixedGapRegistry !== 'undefined') {
+                gapRegistry = new FixedGapRegistry(this.gameCore);
+            }
+
+            // Get available personalities for variety
+            const personalities = window.AI_PERSONALITIES || {};
+            const personalityKeys = Object.keys(personalities);
+
+            // Randomly select personalities for each player (for variety)
+            let xPersonality = null;
+            let oPersonality = null;
+
+            if (personalityKeys.length > 0) {
+                const xKey = personalityKeys[Math.floor(Math.random() * personalityKeys.length)];
+                const oKey = personalityKeys[Math.floor(Math.random() * personalityKeys.length)];
+                xPersonality = personalities[xKey];
+                oPersonality = personalities[oKey];
+                console.log(`X personality: ${xPersonality?.name || 'Default'}`);
+                console.log(`O personality: ${oPersonality?.name || 'Default'}`);
+                this.log(`X: ${xPersonality?.name || 'Default'}, O: ${oPersonality?.name || 'Default'}`, 'system');
+            }
+
+            // Create AI instances using SimpleChainAI with personalities
+            if (typeof SimpleChainAI !== 'undefined') {
+                this.aiX = new SimpleChainAI(this.gameCore, 'X', xPersonality);
+                this.aiO = new SimpleChainAI(this.gameCore, 'O', oPersonality);
+
+                // Connect gap registry
+                if (gapRegistry) {
+                    this.aiX.setGapRegistry(gapRegistry);
+                    this.aiO.setGapRegistry(gapRegistry);
+                }
+
+                // Update personality display
+                const xEl = document.getElementById('xPersonality');
+                const oEl = document.getElementById('oPersonality');
+                if (xEl) xEl.textContent = this.aiX.personalityName || 'Default';
+                if (oEl) oEl.textContent = this.aiO.personalityName || 'Default';
+
+                console.log('AIs initialized with SimpleChainAI');
+            } else {
+                console.error('SimpleChainAI not found!');
+            }
+        }
+
+        createBoard() {
+            const boardElement = document.getElementById('gameBoard');
+            if (!boardElement) return;
+
+            boardElement.innerHTML = '';
+
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+
+                    const cellNumber = document.createElement('div');
+                    cellNumber.className = 'cell-number';
+                    cellNumber.textContent = row * this.boardSize + col + 1;
+                    cell.appendChild(cellNumber);
+
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        setupEventListeners() {
+            // Mode selection
+            document.getElementById('autoModeBtn').addEventListener('click', () => this.setMode('auto'));
+            document.getElementById('stepModeBtn').addEventListener('click', () => this.setMode('step'));
+
+            // Game controls
+            document.getElementById('startBtn').addEventListener('click', () => this.startGame());
+            document.getElementById('autoPlayBtn').addEventListener('click', () => this.toggleAutoPlay());
+            document.getElementById('stepBtn').addEventListener('click', () => this.step());
+            document.getElementById('stopBtn').addEventListener('click', () => this.stopAll());
+
+            // Export controls
+            document.getElementById('exportBtn').addEventListener('click', () => this.exportCSV());
+            document.getElementById('exportJsonBtn').addEventListener('click', () => this.exportJSON());
+
+            // Speed control
+            const speedSlider = document.getElementById('gameSpeed');
+            speedSlider.addEventListener('input', (e) => {
+                this.moveDelay = parseInt(e.target.value);
+                document.getElementById('speedValue').textContent = (this.moveDelay / 1000).toFixed(1) + 's';
+            });
+
+            // Initialize speed display
+            document.getElementById('speedValue').textContent = (this.moveDelay / 1000).toFixed(1) + 's';
+        }
+
+        setMode(mode) {
+            this.mode = mode;
+            document.getElementById('autoModeBtn').classList.toggle('active', mode === 'auto');
+            document.getElementById('stepModeBtn').classList.toggle('active', mode === 'step');
+            document.getElementById('stepBtn').disabled = (mode === 'auto' || this.gameState !== 'running');
+
+            this.log(`Mode changed to: ${mode.toUpperCase()}`, 'system');
+        }
+
+        toggleAutoPlay() {
+            if (this.isAutoPlaying) {
+                this.stopAll();
+            } else {
+                this.isAutoPlaying = true;
+                this.isRecording = true;
+                document.getElementById('autoPlayBtn').textContent = 'Stop Auto';
+                document.getElementById('autoPlayBtn').classList.add('recording');
+                document.getElementById('autoPlayStatus').textContent = 'ON - Recording';
+                document.getElementById('recordingIndicator').classList.add('active');
+                this.log('Auto-play started - games will play continuously and be recorded', 'system');
+                this.startGame();
+            }
+        }
+
+        startGame() {
+            // Reset game state
+            this.gameCore.resetGame(this.boardSize);
+            if (this.diagonalLines) this.diagonalLines.clear();
+
+            // Re-initialize AIs for new game
+            this.initializeAIs();
+
+            this.currentPlayer = 'X';
+            this.gameState = 'running';
+
+            // Initialize current game moves for recording
+            this.currentGameMoves = [];
+
+            // Update UI
+            this.updateBoard();
+            this.updateDisplay();
+            document.getElementById('startBtn').textContent = 'Restart';
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('stepBtn').disabled = (this.mode === 'auto');
+
+            this.log('Game started!', 'system');
+            this.gamesPlayed++;
+            document.getElementById('gamesPlayed').textContent = this.gamesPlayed;
+
+            // Start game loop if in auto mode
+            if (this.mode === 'auto') {
+                this.runAutoLoop();
+            }
+        }
+
+        async runAutoLoop() {
+            while (this.gameState === 'running' && this.mode === 'auto') {
+                await this.makeAIMove();
+                if (this.gameState === 'running') {
+                    await this.delay(this.moveDelay);
+                }
+            }
+        }
+
+        async step() {
+            if (this.gameState !== 'running') return;
+            await this.makeAIMove();
+        }
+
+        async makeAIMove() {
+            if (this.gameState !== 'running') return;
+
+            const ai = this.currentPlayer === 'X' ? this.aiX : this.aiO;
+            if (!ai) {
+                this.log('AI not available!', 'system');
+                this.endGame('error', 'AI not available');
+                return;
+            }
+
+            try {
+                const move = ai.getNextMove();
+
+                if (!move) {
+                    this.log(`${this.currentPlayer} has no valid moves!`, 'system');
+                    this.endGame('no-moves', `${this.currentPlayer} cannot move`);
+                    return;
+                }
+
+                // Make the move
+                const result = this.gameCore.makeMove(move.row, move.col, this.currentPlayer);
+
+                if (result.success) {
+                    // Record the move for ML training
+                    if (this.isRecording) {
+                        const boardState = this.getBoardStateString();
+                        this.currentGameMoves.push({
+                            moveNumber: this.gameCore.moveCount,
+                            player: this.currentPlayer,
+                            row: move.row,
+                            col: move.col,
+                            cellIndex: move.row * this.boardSize + move.col,
+                            moveType: move.pattern || 'normal',
+                            reason: move.reason || '',
+                            boardState: boardState
+                        });
+                        this.totalMovesRecorded++;
+                        document.getElementById('totalMoves').textContent = this.totalMovesRecorded;
+                    }
+
+                    // Log the move with player-specific move number (e.g., X15, O14)
+                    const cellNum = move.row * this.boardSize + move.col + 1;
+                    const playerMoveNum = (this.gameCore.gameHistory || []).filter(m => m.player === this.currentPlayer).length;
+                    this.log(`${this.currentPlayer}${playerMoveNum} plays (${move.row},${move.col}) [cell ${cellNum}]`, this.currentPlayer.toLowerCase() + '-move');
+
+                    // Update display
+                    this.updateBoard();
+                    this.updateDisplay();
+
+                    // Check for win
+                    if (result.gameOver) {
+                        this.endGame('win', `${result.winner} wins!`);
+                        return;
+                    }
+
+                    // Switch player
+                    this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+                    this.updateDisplay();
+
+                } else {
+                    this.log(`Move failed: ${result.reason}`, 'system');
+                }
+
+            } catch (error) {
+                console.error('AI move error:', error);
+                this.log(`Error: ${error.message}`, 'system');
+            }
+        }
+
+        stopAll() {
+            this.gameState = 'complete';
+            this.isAutoPlaying = false;
+            if (this.gameLoopTimeout) {
+                clearTimeout(this.gameLoopTimeout);
+            }
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('stepBtn').disabled = true;
+            document.getElementById('autoPlayBtn').textContent = 'Auto-Play';
+            document.getElementById('autoPlayBtn').classList.remove('recording');
+            document.getElementById('autoPlayStatus').textContent = 'OFF';
+            this.log('All games stopped.', 'system');
+            this.updateDisplay();
+        }
+
+        endGame(type, reason) {
+            this.gameState = 'complete';
+
+            // Determine winner
+            const winner = type === 'win' ? this.currentPlayer : null;
+
+            // Update win statistics
+            if (winner === 'X') {
+                this.xWins++;
+                document.getElementById('xWins').textContent = this.xWins;
+            } else if (winner === 'O') {
+                this.oWins++;
+                document.getElementById('oWins').textContent = this.oWins;
+            }
+
+            // Save the recorded game
+            if (this.isRecording && this.currentGameMoves.length > 0) {
+                this.recordedGames.push({
+                    gameId: this.gamesPlayed,
+                    timestamp: new Date().toISOString(),
+                    winner: winner,
+                    winType: type,
+                    totalMoves: this.currentGameMoves.length,
+                    xPersonality: this.aiX?.personalityName || 'Default',
+                    oPersonality: this.aiO?.personalityName || 'Default',
+                    moves: [...this.currentGameMoves]
+                });
+                this.gamesRecorded++;
+                document.getElementById('gamesRecorded').textContent = this.gamesRecorded;
+                this.log(`Game #${this.gamesPlayed} saved (${this.currentGameMoves.length} moves, winner: ${winner || 'none'})`, 'system');
+            }
+
+            this.log(`Game Over: ${reason}`, 'system');
+            document.getElementById('gameStatus').textContent = reason;
+            document.getElementById('stopBtn').disabled = !this.isAutoPlaying;
+            document.getElementById('stepBtn').disabled = true;
+
+            // Auto-restart if in auto-play mode
+            if (this.isAutoPlaying) {
+                setTimeout(() => {
+                    if (this.isAutoPlaying) {
+                        this.log('Starting next game...', 'system');
+                        this.startGame();
+                    }
+                }, 1000); // 1 second delay before next game
+            }
+        }
+
+        // Get board state as a string for ML training (flattened)
+        getBoardStateString() {
+            let state = '';
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
+                    const cell = this.gameCore.board[row][col];
+                    state += cell === 'X' ? '1' : (cell === 'O' ? '2' : '0');
+                }
+            }
+            return state;
+        }
+
+        // Export as CSV for spreadsheet/ML training
+        exportCSV() {
+            if (this.recordedGames.length === 0) {
+                this.log('No games recorded to export', 'system');
+                return;
+            }
+
+            // Create CSV header
+            const headers = [
+                'game_id', 'move_number', 'player', 'row', 'col', 'cell_index',
+                'move_type', 'board_state', 'winner', 'x_personality', 'o_personality'
+            ];
+
+            let csvContent = headers.join(',') + '\n';
+
+            // Add all moves from all games
+            for (const game of this.recordedGames) {
+                for (const move of game.moves) {
+                    const row = [
+                        game.gameId,
+                        move.moveNumber,
+                        move.player,
+                        move.row,
+                        move.col,
+                        move.cellIndex,
+                        `"${move.moveType}"`,
+                        move.boardState,
+                        game.winner || 'none',
+                        `"${game.xPersonality}"`,
+                        `"${game.oPersonality}"`
+                    ];
+                    csvContent += row.join(',') + '\n';
+                }
+            }
+
+            // Download CSV
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ai-vs-ai-training-${this.recordedGames.length}games-${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.log(`Exported ${this.recordedGames.length} games (${this.totalMovesRecorded} moves) to CSV`, 'system');
+        }
+
+        // Export as JSON for more detailed ML training
+        exportJSON() {
+            if (this.recordedGames.length === 0) {
+                this.log('No games recorded to export', 'system');
+                return;
+            }
+
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                totalGames: this.recordedGames.length,
+                totalMoves: this.totalMovesRecorded,
+                statistics: {
+                    xWins: this.xWins,
+                    oWins: this.oWins,
+                    draws: this.recordedGames.filter(g => !g.winner).length
+                },
+                boardSize: this.boardSize,
+                games: this.recordedGames
+            };
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ai-vs-ai-training-${this.recordedGames.length}games-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.log(`Exported ${this.recordedGames.length} games to JSON`, 'system');
+        }
+
+        updateBoard() {
+            const cells = document.querySelectorAll('.cell');
+            const lastMove = this.gameCore.lastMove;
+
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const value = this.gameCore.board[row][col];
+
+                cell.classList.remove('x', 'o', 'last-move');
+                const existingText = cell.querySelector('.move-text');
+                if (existingText) existingText.remove();
+
+                if (value === 'X' || value === 'O') {
+                    cell.classList.add(value.toLowerCase());
+
+                    const moveText = document.createElement('div');
+                    moveText.className = 'move-text';
+                    moveText.textContent = `${value}${this.getMoveNumber(row, col, value)}`;
+                    cell.appendChild(moveText);
+                }
+
+                if (lastMove && lastMove.row === row && lastMove.col === col) {
+                    cell.classList.add('last-move');
+                }
+            });
+
+            if (this.diagonalLines) {
+                setTimeout(() => this.diagonalLines.updateDiagonalLines(), 50);
+            }
+        }
+
+        getMoveNumber(row, col, player) {
+            let count = 0;
+            for (const move of this.gameCore.gameHistory || []) {
+                if (move.player === player) {
+                    count++;
+                    if (move.row === row && move.col === col) {
+                        return count;
+                    }
+                }
+            }
+            return '';
+        }
+
+        updateDisplay() {
+            document.getElementById('currentPlayer').textContent = this.currentPlayer;
+            document.getElementById('currentPlayer').className = 'status-value current-player-' + this.currentPlayer.toLowerCase();
+            document.getElementById('moveCount').textContent = this.gameCore.moveCount || 0;
+
+            const xMoves = (this.gameCore.gameHistory || []).filter(m => m.player === 'X').length;
+            const oMoves = (this.gameCore.gameHistory || []).filter(m => m.player === 'O').length;
+            document.getElementById('xMoves').textContent = xMoves;
+            document.getElementById('oMoves').textContent = oMoves;
+
+            if (this.gameState === 'running') {
+                document.getElementById('gameStatus').textContent = 'Playing';
+            } else if (this.gameState === 'ready') {
+                document.getElementById('gameStatus').textContent = 'Ready';
+            }
+        }
+
+        log(message, type = '') {
+            const logElement = document.getElementById('gameLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = message;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+
+            // Keep log size manageable
+            while (logElement.children.length > 100) {
+                logElement.removeChild(logElement.firstChild);
+            }
+        }
+
+        delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // ===== NEURAL AI TRAINING METHODS =====
+
+        setupTrainingUI() {
+            const trainBtn = document.getElementById('trainModelBtn');
+            const saveBtn = document.getElementById('saveModelBtn');
+            const exportBtn = document.getElementById('exportModelBtn');
+
+            if (trainBtn) {
+                trainBtn.addEventListener('click', () => this.trainModel());
+            }
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => this.saveNeuralModel());
+            }
+            if (exportBtn) {
+                exportBtn.addEventListener('click', () => this.exportNeuralModel());
+            }
+
+            // Check for existing model
+            this.checkExistingModel();
+        }
+
+        async checkExistingModel() {
+            if (typeof tf === 'undefined') {
+                this.updateModelInfo('TensorFlow.js not loaded');
+                return;
+            }
+
+            const exists = await window.modelStorage?.modelExists();
+            if (exists) {
+                const metadata = window.modelStorage?.getMetadata();
+                this.updateModelInfo(`Saved model found (${metadata?.savedAt || 'unknown date'})`);
+            } else {
+                this.updateModelInfo('No saved model');
+            }
+        }
+
+        async trainModel() {
+            const fileInput = document.getElementById('trainingFile');
+            const file = fileInput?.files[0];
+
+            // Use recorded games if no file selected
+            let games = [];
+
+            if (file) {
+                this.updateTrainingProgress('Loading training file...');
+                const trainingManager = new TrainingManager({
+                    onEpochEnd: (epoch, logs) => {
+                        this.updateTrainingProgress(`Epoch ${epoch + 1}: loss=${logs.loss.toFixed(4)}, acc=${logs.acc.toFixed(4)}`);
+                    }
+                });
+
+                try {
+                    const content = await this.readFile(file);
+                    if (file.name.endsWith('.json')) {
+                        games = trainingManager.parseJSONData(content);
+                    } else {
+                        games = trainingManager.parseCSVData(content);
+                    }
+                } catch (error) {
+                    this.updateTrainingProgress(`Error: ${error.message}`);
+                    return;
+                }
+            } else if (this.recordedGames.length > 0) {
+                games = this.recordedGames;
+                this.updateTrainingProgress(`Using ${games.length} recorded games...`);
+            } else {
+                this.updateTrainingProgress('No training data. Record games or select a file.');
+                return;
+            }
+
+            if (games.length === 0) {
+                this.updateTrainingProgress('No valid games found');
+                return;
+            }
+
+            try {
+                this.updateTrainingProgress(`Training on ${games.length} games...`);
+
+                const trainingManager = new TrainingManager({
+                    epochs: 10,
+                    onEpochEnd: (epoch, logs) => {
+                        this.updateTrainingProgress(`Epoch ${epoch + 1}/10: loss=${logs.loss.toFixed(4)}, acc=${logs.acc.toFixed(4)}`);
+                    }
+                });
+
+                // Create or load model
+                let model = await window.modelStorage?.loadModel();
+                if (!model) {
+                    const arch = new ModelArchitecture();
+                    model = arch.createModel();
+                }
+
+                // Train
+                await trainingManager.trainFromGames(model, games);
+
+                // Store globally for use
+                window.trainedNeuralModel = model;
+
+                this.updateTrainingProgress('Training complete!');
+                this.updateModelInfo(`Model ready (${new ModelArchitecture().getModelSizeKB(model)}KB)`);
+
+            } catch (error) {
+                console.error('Training error:', error);
+                this.updateTrainingProgress(`Training error: ${error.message}`);
+            }
+        }
+
+        async saveNeuralModel() {
+            if (!window.trainedNeuralModel) {
+                this.updateTrainingProgress('No trained model to save');
+                return;
+            }
+
+            try {
+                await window.modelStorage?.saveModel(window.trainedNeuralModel, {
+                    gamesUsed: this.recordedGames.length,
+                    trainedAt: new Date().toISOString()
+                });
+                this.updateTrainingProgress('Model saved to browser storage');
+            } catch (error) {
+                this.updateTrainingProgress(`Save error: ${error.message}`);
+            }
+        }
+
+        async exportNeuralModel() {
+            if (!window.trainedNeuralModel) {
+                this.updateTrainingProgress('No trained model to export');
+                return;
+            }
+
+            try {
+                await window.modelStorage?.exportModel(window.trainedNeuralModel, 'connection-game-neural-ai');
+                this.updateTrainingProgress('Model exported as download');
+            } catch (error) {
+                this.updateTrainingProgress(`Export error: ${error.message}`);
+            }
+        }
+
+        readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+        }
+
+        updateTrainingProgress(message) {
+            const el = document.getElementById('trainingProgress');
+            if (el) el.textContent = message;
+            console.log('Training:', message);
+        }
+
+        updateModelInfo(message) {
+            const el = document.getElementById('modelInfo');
+            if (el) el.textContent = message;
+        }
+    }
+
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        window.aivsai = new AIvsAIController();
+        // Setup training UI after short delay
+        setTimeout(() => window.aivsai.setupTrainingUI(), 500);
+    });
+    </script>
+</body>
+</html>

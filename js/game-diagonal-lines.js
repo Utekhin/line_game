@@ -1,6 +1,6 @@
-// game-diagonal-lines.js - Diagonal Lines Visualization Module
-// Handles detection and rendering of diagonal locks between immediately adjacent pieces
-// Requires game-core.js to be loaded first
+// game-diagonal-lines.js - FIXED: Proper Diagonal Line Detection with "First Locks Wins" Rule
+// Handles detection and rendering of diagonal connections between immediately adjacent pieces
+// CRITICAL FIX: Prevents later diagonals from crossing earlier established diagonals
 
 class ConnectionGameDiagonalLines {
     constructor(gameCore, svgElement) {
@@ -17,14 +17,11 @@ class ConnectionGameDiagonalLines {
             [1, 1]    // Bottom-right
         ];
         
-        console.log('Diagonal Lines module initialized');
+        console.log('🔗 Diagonal Lines module initialized with crossing prevention');
     }
 
     // MAIN: Update diagonal lines display
     updateDiagonalLines(cellSize = null) {
-        // Cell size is now calculated from DOM, so we don't need the parameter
-        // but we keep it for backward compatibility
-        
         // Check if board state changed to avoid unnecessary updates
         const currentBoardState = JSON.stringify(this.gameCore.board);
         if (currentBoardState === this.lastBoardState) {
@@ -32,14 +29,14 @@ class ConnectionGameDiagonalLines {
         }
         this.lastBoardState = currentBoardState;
         
-        console.log('=== Updating Diagonal Lines ===');
+        console.log('=== Updating Diagonal Lines with Rule Enforcement ===');
         
-        // Find all current diagonal connections
+        // Find all current diagonal connections with proper rule enforcement
         this.diagonalConnections = this.findAllDiagonalConnections();
         
-        console.log(`Found ${this.diagonalConnections.length} diagonal connections`);
+        console.log(`Found ${this.diagonalConnections.length} valid diagonal connections`);
         this.diagonalConnections.forEach((conn, index) => {
-            console.log(`Connection ${index + 1}: ${conn.player} from (${conn.row1},${conn.col1}) to (${conn.row2},${conn.col2}) [established at move ${conn.establishedAtMove || '?'}]`);
+            console.log(`Connection ${index + 1}: ${conn.player} from (${conn.row1},${conn.col1}) to (${conn.row2},${conn.col2}) [move ${conn.establishedAtMove}]`);
         });
         
         // Render lines in SVG
@@ -50,116 +47,156 @@ class ConnectionGameDiagonalLines {
 
     // CORE: Find all diagonal connections (respecting move order and crossing rules)
     findAllDiagonalConnections() {
-    const connections = [];
-    
-    // SAFETY CHECK: Make sure game core and board are initialized
-    if (!this.gameCore || !this.gameCore.board || !Array.isArray(this.gameCore.board)) {
-        console.warn('Game core or board not properly initialized, skipping diagonal connections');
-        return connections;
-    }
-    
-    // Build connections incrementally based on move history to respect "first locks wins" rule
-    const moveHistory = this.gameCore.gameHistory || [];
-    
-    console.log(`Building diagonal connections from ${moveHistory.length} moves`);
-    
-    // Process moves in chronological order
-    for (let moveIndex = 0; moveIndex < moveHistory.length; moveIndex++) {
-        const move = moveHistory[moveIndex];
-        const newConnections = this.findNewConnectionsForMove(move, connections);
-        connections.push(...newConnections);
-    }
-    
-    // Also check any pieces not in history (fallback for direct board analysis)
-    const historyPositions = new Set(moveHistory.map(m => `${m.row}-${m.col}`));
-    
-    // SAFETY CHECK: Make sure getPlayerPositions exists
-    if (typeof this.gameCore.getPlayerPositions !== 'function') {
-        console.warn('getPlayerPositions method not available, skipping fallback analysis');
-        return connections;
-    }
-    
-    ['X', 'O'].forEach(player => {
-        try {
-            const playerPositions = this.gameCore.getPlayerPositions(player);
-            if (Array.isArray(playerPositions)) {
-                for (const pos of playerPositions) {
-                    const posKey = `${pos.row}-${pos.col}`;
-                    if (!historyPositions.has(posKey)) {
-                        // This piece wasn't found in history, check it as if it were placed now
-                        const move = { row: pos.row, col: pos.col, player: player, moveNumber: 999 };
-                        const newConnections = this.findNewConnectionsForMove(move, connections);
-                        connections.push(...newConnections);
-                    }
-                }
-            }
-        } catch (error) {
-            console.warn(`Error getting positions for player ${player}:`, error);
+        const connections = [];
+        
+        // SAFETY CHECK: Make sure game core and board are initialized
+        if (!this.gameCore || !this.gameCore.board || !Array.isArray(this.gameCore.board)) {
+            console.warn('Game core or board not properly initialized, skipping diagonal connections');
+            return connections;
         }
-    });
-    
-    return connections;
-}
+        
+        // Build connections incrementally based on move history to respect "first locks wins" rule
+        const moveHistory = this.gameCore.gameHistory || [];
+        
+        console.log(`🔗 Building diagonal connections from ${moveHistory.length} moves (chronological order)`);
+        
+        // Process moves in chronological order (CRITICAL for first-locks-wins)
+        for (let moveIndex = 0; moveIndex < moveHistory.length; moveIndex++) {
+            const move = moveHistory[moveIndex];
+            console.log(`\n🔍 Processing move ${moveIndex + 1}: ${move.player} at (${move.row},${move.col})`);
+            
+            const newConnections = this.findNewConnectionsForMove(move, connections);
+            connections.push(...newConnections);
+            
+            console.log(`  📊 Total connections after move ${moveIndex + 1}: ${connections.length}`);
+        }
+        
+        // Also check any pieces not in history (fallback for direct board analysis)
+        this.checkMissingPieces(moveHistory, connections);
+        
+        console.log(`\n🎯 Final diagonal connections: ${connections.length}`);
+        connections.forEach((conn, i) => {
+            console.log(`  ${i+1}. ${conn.player} (${conn.row1},${conn.col1})-(${conn.row2},${conn.col2}) [move ${conn.establishedAtMove}]`);
+        });
+        
+        return connections;
+    }
 
-    // NEW: Find new diagonal connections created by a specific move
+    // FIXED: Find new diagonal connections created by a specific move
     findNewConnectionsForMove(move, existingConnections) {
         const newConnections = [];
         const { row, col, player } = move;
+        
+        console.log(`🔗 Finding connections for ${player} move at (${row},${col})`);
         
         // Check all 4 diagonal directions from the new piece
         for (const [dr, dc] of this.diagonalDirections) {
             const adjacentRow = row + dr;
             const adjacentCol = col + dc;
             
+            console.log(`  🔍 Checking direction [${dr},${dc}] → (${adjacentRow},${adjacentCol})`);
+            
             // Check if adjacent position is valid and contains same player
-            if (this.gameCore.isValidPosition(adjacentRow, adjacentCol) && 
-                this.gameCore.board[adjacentRow][adjacentCol] === player) {
-                
-                // Create potential connection
-                const connection = this.createOrderedConnection(
-                    row, col, 
-                    adjacentRow, adjacentCol, 
-                    player
-                );
-                
-                // Add move number for tracking
-                connection.establishedAtMove = move.moveNumber || 999;
-                
-                // Check if this connection already exists
-                if (this.connectionExists(existingConnections, connection) || 
-                    this.connectionExists(newConnections, connection)) {
-                    continue; // Skip duplicate
-                }
-                
-                // CRITICAL: Check if this connection would cross any existing opponent lines
-                const opponent = player === 'X' ? 'O' : 'X';
-                const opponentConnections = existingConnections.filter(conn => conn.player === opponent);
-                
-                if (this.wouldConnectionCrossOpponentLines(connection, opponentConnections)) {
-                    console.log(`Move ${move.moveNumber}: Blocked connection ${player} (${row},${col}) ↔ (${adjacentRow},${adjacentCol}) - crosses opponent line`);
-                    continue; // Skip this connection - it's blocked
-                }
-                
-                newConnections.push(connection);
-                console.log(`Move ${move.moveNumber}: Added diagonal connection ${player} (${row},${col}) ↔ (${adjacentRow},${adjacentCol})`);
+            if (!this.gameCore.isValidPosition(adjacentRow, adjacentCol)) {
+                console.log(`    ❌ Invalid position`);
+                continue;
             }
+            
+            const adjacentContent = this.gameCore.board[adjacentRow][adjacentCol];
+            if (adjacentContent !== player) {
+                console.log(`    ➡️ Not same player (need ${player}, found "${adjacentContent}")`);
+                continue;
+            }
+            
+            // FIXED: Find when the adjacent piece was actually placed and use max
+            const adjacentMoveNumber = this.findMoveNumberForPosition(adjacentRow, adjacentCol);
+            const currentMoveNumber = move.moveNumber || this.gameCore.moveCount;
+            const diagonalEstablishedAt = Math.max(adjacentMoveNumber, currentMoveNumber);
+            
+            console.log(`    📋 Adjacent piece at (${adjacentRow},${adjacentCol}) placed at move ${adjacentMoveNumber}`);
+            console.log(`    📋 Current piece at (${row},${col}) placed at move ${currentMoveNumber}`);
+            console.log(`    📋 Diagonal established at move ${diagonalEstablishedAt} (max of the two)`);
+            
+            // Create potential connection
+            const connection = this.createOrderedConnection(
+                row, col, 
+                adjacentRow, adjacentCol, 
+                player
+            );
+            connection.establishedAtMove = diagonalEstablishedAt;
+            
+            // Check if this connection already exists
+            if (this.connectionExists(existingConnections, connection) || 
+                this.connectionExists(newConnections, connection)) {
+                console.log(`    ⭐ Connection already exists: (${connection.row1},${connection.col1})-(${connection.row2},${connection.col2})`);
+                continue;
+            }
+            
+            // CRITICAL: Check if this connection would cross any existing opponent lines
+            const opponent = player === 'X' ? 'O' : 'X';
+            const opponentConnections = existingConnections.filter(conn => conn.player === opponent);
+            
+            console.log(`    🔍 Checking against ${opponentConnections.length} existing ${opponent} connections`);
+            
+            if (this.wouldConnectionCrossOpponentLines(connection, opponentConnections)) {
+                console.log(`    🚫 BLOCKED: ${player} connection (${row},${col}) ↔ (${adjacentRow},${adjacentCol}) crosses opponent line`);
+                continue; // Skip this connection - it's blocked
+            }
+            
+            newConnections.push(connection);
+            console.log(`    ✅ ADDED: ${player} diagonal connection (${row},${col}) ↔ (${adjacentRow},${adjacentCol})`);
         }
         
         return newConnections;
     }
 
-    // NEW: Check if a potential connection would cross existing opponent lines
-    wouldConnectionCrossOpponentLines(newConnection, opponentConnections) {
-        for (const opponentConn of opponentConnections) {
-            if (this.doLinesIntersect(newConnection, opponentConn)) {
-                console.log(`Line intersection detected: ${newConnection.player}(${newConnection.row1},${newConnection.col1})-(${newConnection.row2},${newConnection.col2}) crosses ${opponentConn.player}(${opponentConn.row1},${opponentConn.col1})-(${opponentConn.row2},${opponentConn.col2})`);
-                return true;
+    // HELPER: Find when a specific position was placed
+    findMoveNumberForPosition(row, col) {
+        const moveHistory = this.gameCore.gameHistory || [];
+        
+        for (let i = 0; i < moveHistory.length; i++) {
+            const move = moveHistory[i];
+            if (move.row === row && move.col === col) {
+                return move.moveNumber || (i + 1);
             }
         }
+        
+        // Fallback: assume it was placed recently
+        return this.gameCore.moveCount || 1;
+    }
+
+    // FIXED: Enhanced connection crossing check with chronological ordering
+    wouldConnectionCrossOpponentLines(newConnection, opponentConnections) {
+        console.log(`🔍 Checking if ${newConnection.player} line (${newConnection.row1},${newConnection.col1})-(${newConnection.row2},${newConnection.col2}) crosses opponent lines`);
+        
+        for (let i = 0; i < opponentConnections.length; i++) {
+            const opponentConn = opponentConnections[i];
+            console.log(`  Checking against opponent line ${i+1}: ${opponentConn.player}(${opponentConn.row1},${opponentConn.col1})-(${opponentConn.row2},${opponentConn.col2})`);
+            
+            if (this.doLinesIntersect(newConnection, opponentConn)) {
+                // FIXED: Check chronological order - "first locks wins"
+                const newMoveNumber = newConnection.establishedAtMove || 999;
+                const opponentMoveNumber = opponentConn.establishedAtMove || 0;
+                
+                console.log(`  📅 Chronological check: New move ${newMoveNumber} vs Opponent move ${opponentMoveNumber}`);
+                
+                if (newMoveNumber < opponentMoveNumber) {
+                    // New connection was established earlier - it wins
+                    console.log(`  ✅ NEW connection established first (${newMoveNumber} < ${opponentMoveNumber}) - allowing new connection`);
+                    return false; // Don't block the new connection
+                } else {
+                    // Opponent connection was established earlier - opponent wins  
+                    console.log(`  🚫 OPPONENT connection established first (${opponentMoveNumber} < ${newMoveNumber}) - blocking new connection`);
+                    return true; // Block the new connection
+                }
+            }
+        }
+        
+        console.log(`  ✅ Clear: No intersections found`);
         return false;
     }
 
-    // NEW: Check if two line segments intersect
+    // FIXED: Improved line intersection detection
     doLinesIntersect(line1, line2) {
         // Get line endpoints
         const x1 = line1.col1, y1 = line1.row1;
@@ -167,90 +204,76 @@ class ConnectionGameDiagonalLines {
         const x3 = line2.col1, y3 = line2.row1;  
         const x4 = line2.col2, y4 = line2.row2;
         
-        // Check if lines share an endpoint (not considered intersection)
+        console.log(`🔍 Intersection test:`);
+        console.log(`   Line1: (${x1},${y1})-(${x2},${y2}) [${line1.player}]`);
+        console.log(`   Line2: (${x3},${y3})-(${x4},${y4}) [${line2.player}]`);
+        
+        // Check if lines share an endpoint (allowed - pieces can be adjacent)
         if ((x1 === x3 && y1 === y3) || (x1 === x4 && y1 === y4) ||
             (x2 === x3 && y2 === y3) || (x2 === x4 && y2 === y4)) {
+            console.log(`  ✅ Lines share endpoint - allowed`);
             return false; // Sharing endpoint is allowed
         }
         
-        // Calculate direction vectors and cross products
-        const d1 = this.orientation(x1, y1, x2, y2, x3, y3);
-        const d2 = this.orientation(x1, y1, x2, y2, x4, y4);
-        const d3 = this.orientation(x3, y3, x4, y4, x1, y1);
-        const d4 = this.orientation(x3, y3, x4, y4, x2, y2);
+        // Use parametric line intersection test
+        const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
         
-        // General case: lines intersect if orientations are different
-        if (d1 !== d2 && d3 !== d4) {
-            return true;
+        // Lines are parallel
+        if (Math.abs(denom) < 0.0001) {
+            console.log(`  ➡️ Lines are parallel`);
+            return false;
         }
         
-        // Special cases: check if points are collinear and on segments
-        if (d1 === 0 && this.onSegment(x1, y1, x3, y3, x2, y2)) return true;
-        if (d2 === 0 && this.onSegment(x1, y1, x4, y4, x2, y2)) return true;
-        if (d3 === 0 && this.onSegment(x3, y3, x1, y1, x4, y4)) return true;
-        if (d4 === 0 && this.onSegment(x3, y3, x2, y2, x4, y4)) return true;
+        // Calculate intersection parameters
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
         
-        return false;
-    }
-
-    // Helper: Find orientation of ordered triplet (p, q, r)
-    // Returns 0 if collinear, 1 if clockwise, 2 if counterclockwise
-    orientation(px, py, qx, qy, rx, ry) {
-        const val = (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
-        if (val === 0) return 0; // collinear
-        return (val > 0) ? 1 : 2; // clock or counterclock wise
-    }
-
-    // Helper: Check if point q lies on line segment pr
-    onSegment(px, py, qx, qy, rx, ry) {
-        return qx <= Math.max(px, rx) && qx >= Math.min(px, rx) &&
-               qy <= Math.max(py, ry) && qy >= Math.min(py, ry);
-    }
-
-    // Create ordered connection (smaller coordinates first to avoid duplicates)
-    createOrderedConnection(row1, col1, row2, col2, player) {
-        // Order by row first, then by column
-        if (row1 < row2 || (row1 === row2 && col1 < col2)) {
-            return {
-                row1: row1, col1: col1,
-                row2: row2, col2: col2,
-                player: player,
-                type: this.getDiagonalType(row1, col1, row2, col2),
-                establishedAtMove: null // Will be set by caller
-            };
+        console.log(`   📐 Intersection parameters: t=${t.toFixed(3)}, u=${u.toFixed(3)}`);
+        
+        // Check if intersection point is within both line segments
+        const intersects = (t > 0.01 && t < 0.99) && (u > 0.01 && u < 0.99);
+        
+        if (intersects) {
+            const intersectX = x1 + t * (x2 - x1);
+            const intersectY = y1 + t * (y2 - y1);
+            console.log(`  ⚠️ INTERSECTION DETECTED at (${intersectX.toFixed(1)}, ${intersectY.toFixed(1)})`);
         } else {
-            return {
-                row1: row2, col1: col2,
-                row2: row1, col2: col1,
-                player: player,
-                type: this.getDiagonalType(row2, col2, row1, col1),
-                establishedAtMove: null // Will be set by caller
-            };
+            console.log(`  ✅ No intersection (t=${t.toFixed(3)}, u=${u.toFixed(3)})`);
         }
+        
+        return intersects;
     }
 
-    // Determine diagonal type for styling
-    getDiagonalType(row1, col1, row2, col2) {
-        const rowDiff = row2 - row1;
-        const colDiff = col2 - col1;
+    // Enhanced: Check for pieces not in history
+    checkMissingPieces(moveHistory, connections) {
+        const historyPositions = new Set(moveHistory.map(m => `${m.row}-${m.col}`));
         
-        if (rowDiff > 0 && colDiff > 0) return 'main-diagonal';     // ↘ (top-left to bottom-right)
-        if (rowDiff > 0 && colDiff < 0) return 'anti-diagonal';    // ↙ (top-right to bottom-left)
-        if (rowDiff < 0 && colDiff > 0) return 'anti-diagonal';    // ↗ (bottom-left to top-right)
-        if (rowDiff < 0 && colDiff < 0) return 'main-diagonal';    // ↖ (bottom-right to top-left)
-        
-        return 'unknown';
-    }
-
-    // Check if connection already exists in array
-    connectionExists(connections, newConnection) {
-        return connections.some(conn => 
-            conn.row1 === newConnection.row1 && 
-            conn.col1 === newConnection.col1 && 
-            conn.row2 === newConnection.row2 && 
-            conn.col2 === newConnection.col2 && 
-            conn.player === newConnection.player
-        );
+        ['X', 'O'].forEach(player => {
+            try {
+                if (typeof this.gameCore.getPlayerPositions === 'function') {
+                    const playerPositions = this.gameCore.getPlayerPositions(player);
+                    if (Array.isArray(playerPositions)) {
+                        for (const pos of playerPositions) {
+                            const posKey = `${pos.row}-${pos.col}`;
+                            if (!historyPositions.has(posKey)) {
+                                console.log(`🔍 Found piece not in history: ${player} at (${pos.row},${pos.col})`);
+                                // This piece wasn't found in history, check it as if it were placed now
+                                const move = { 
+                                    row: pos.row, 
+                                    col: pos.col, 
+                                    player: player, 
+                                    moveNumber: 999 
+                                };
+                                const newConnections = this.findNewConnectionsForMove(move, connections);
+                                connections.push(...newConnections);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn(`Error getting positions for player ${player}:`, error);
+            }
+        });
     }
 
     // RENDER: Draw all diagonal lines in SVG
@@ -271,7 +294,6 @@ class ConnectionGameDiagonalLines {
         }
         
         // Set SVG dimensions to match board container
-        const containerRect = boardContainer.getBoundingClientRect();
         const boardElement = boardContainer.querySelector('.board-grid');
         if (!boardElement) {
             console.warn('Board grid not found');
@@ -294,7 +316,7 @@ class ConnectionGameDiagonalLines {
         });
     }
 
-    // NEW: Get actual cell center coordinates from DOM
+    // Get actual cell center coordinates from DOM
     getCellCenter(row, col) {
         // Find the specific cell element
         const boardElement = document.querySelector('.board-grid');
@@ -331,12 +353,7 @@ class ConnectionGameDiagonalLines {
         
         return {
             x: centerX - paddingLeft,
-            y: centerY - paddingTop,
-            cellRect: cellRect,      // For debugging
-            containerRect: containerRect, // For debugging
-            boardRect: boardRect,    // For debugging
-            paddingLeft: paddingLeft, // For debugging
-            paddingTop: paddingTop   // For debugging
+            y: centerY - paddingTop
         };
     }
 
@@ -390,35 +407,95 @@ class ConnectionGameDiagonalLines {
         console.log(`Drew diagonal line ${index + 1}: ${connection.player} from (${x1.toFixed(1)},${y1.toFixed(1)}) to (${x2.toFixed(1)},${y2.toFixed(1)})`);
     }
 
+    // Create ordered connection (smaller coordinates first to avoid duplicates)
+    createOrderedConnection(row1, col1, row2, col2, player) {
+        // Order by row first, then by column
+        if (row1 < row2 || (row1 === row2 && col1 < col2)) {
+            return {
+                row1: row1, col1: col1,
+                row2: row2, col2: col2,
+                player: player,
+                type: this.getDiagonalType(row1, col1, row2, col2),
+                establishedAtMove: null // Will be set by caller
+            };
+        } else {
+            return {
+                row1: row2, col1: col2,
+                row2: row1, col2: col1,
+                player: player,
+                type: this.getDiagonalType(row2, col2, row1, col1),
+                establishedAtMove: null // Will be set by caller
+            };
+        }
+    }
+
+    // Check if connection already exists in array
+    connectionExists(connections, newConnection) {
+        return connections.some(conn => 
+            conn.row1 === newConnection.row1 && 
+            conn.col1 === newConnection.col1 && 
+            conn.row2 === newConnection.row2 && 
+            conn.col2 === newConnection.col2 && 
+            conn.player === newConnection.player
+        );
+    }
+
+    // Determine diagonal type for styling
+    getDiagonalType(row1, col1, row2, col2) {
+        const rowDiff = row2 - row1;
+        const colDiff = col2 - col1;
+        
+        if (rowDiff > 0 && colDiff > 0) return 'main-diagonal';     // ↘ (top-left to bottom-right)
+        if (rowDiff > 0 && colDiff < 0) return 'anti-diagonal';    // ↙ (top-right to bottom-left)
+        if (rowDiff < 0 && colDiff > 0) return 'anti-diagonal';    // ↗ (bottom-left to top-right)
+        if (rowDiff < 0 && colDiff < 0) return 'main-diagonal';    // ↖ (bottom-right to top-left)
+        
+        return 'unknown';
+    }
+
     // PUBLIC API: Force update (useful for external calls)
     forceUpdate(cellSize = null) {
         this.lastBoardState = null; // Force update
         this.updateDiagonalLines(cellSize);
     }
 
-    // NEW: Debug cell positioning
-    debugCellPositions() {
-        console.log('=== DEBUGGING CELL POSITIONS ===');
+    // Enhanced debugging method
+    analyzeBlocking() {
+        const xConnections = this.diagonalConnections.filter(c => c.player === 'X');
+        const oConnections = this.diagonalConnections.filter(c => c.player === 'O');
         
-        // Test a few cell positions
-        const testCells = [
-            [0, 0], [0, this.gameCore.size - 1], 
-            [this.gameCore.size - 1, 0], [this.gameCore.size - 1, this.gameCore.size - 1],
-            [Math.floor(this.gameCore.size / 2), Math.floor(this.gameCore.size / 2)]
-        ];
+        console.log('\n🔍 === DIAGONAL LINE BLOCKING ANALYSIS ===');
+        console.log('X connections:', xConnections.length);
+        console.log('O connections:', oConnections.length);
         
-        testCells.forEach(([row, col]) => {
-            const center = this.getCellCenter(row, col);
-            if (center) {
-                console.log(`Cell (${row},${col}) center: (${center.x.toFixed(1)}, ${center.y.toFixed(1)})`);
-                console.log(`  Cell rect: ${center.cellRect.width}x${center.cellRect.height} at (${center.cellRect.left}, ${center.cellRect.top})`);
-                console.log(`  Padding: left=${center.paddingLeft.toFixed(1)}, top=${center.paddingTop.toFixed(1)}`);
-            } else {
-                console.log(`Cell (${row},${col}): CENTER NOT FOUND`);
+        console.log('\n⚠️ Lines that WOULD block others (if established later):');
+        xConnections.forEach((xConn, i) => {
+            const blocked = [];
+            oConnections.forEach((oConn, j) => {
+                if ((oConn.establishedAtMove || 999) > (xConn.establishedAtMove || 999) && 
+                    this.doLinesIntersect(xConn, oConn)) {
+                    blocked.push(`O${j+1}(${oConn.row1},${oConn.col1})-(${oConn.row2},${oConn.col2})`);
+                }
+            });
+            if (blocked.length > 0) {
+                console.log(`  X${i+1}(${xConn.row1},${xConn.col1})-(${xConn.row2},${xConn.col2}) [move ${xConn.establishedAtMove}] blocks: ${blocked.join(', ')}`);
             }
         });
         
-        console.log('=== END CELL POSITION DEBUG ===');
+        oConnections.forEach((oConn, i) => {
+            const blocked = [];
+            xConnections.forEach((xConn, j) => {
+                if ((xConn.establishedAtMove || 999) > (oConn.establishedAtMove || 999) && 
+                    this.doLinesIntersect(oConn, xConn)) {
+                    blocked.push(`X${j+1}(${xConn.row1},${xConn.col1})-(${xConn.row2},${xConn.col2})`);
+                }
+            });
+            if (blocked.length > 0) {
+                console.log(`  O${i+1}(${oConn.row1},${oConn.col1})-(${oConn.row2},${oConn.col2}) [move ${oConn.establishedAtMove}] blocks: ${blocked.join(', ')}`);
+            }
+        });
+        
+        console.log('🔍 === END BLOCKING ANALYSIS ===\n');
     }
 
     // PUBLIC API: Get current diagonal connections
@@ -464,45 +541,10 @@ class ConnectionGameDiagonalLines {
         console.log('Diagonal lines cleared');
     }
 
-    // PUBLIC API: Analyze which lines would block which (separate method)
-    analyzeBlocking() {
-        const xConnections = this.diagonalConnections.filter(c => c.player === 'X');
-        const oConnections = this.diagonalConnections.filter(c => c.player === 'O');
-        
-        console.log('X lines that would block O:');
-        xConnections.forEach(xConn => {
-            const blockedO = [];
-            oConnections.forEach(oConn => {
-                if ((oConn.establishedAtMove || 999) > (xConn.establishedAtMove || 999) && 
-                    this.doLinesIntersect(xConn, oConn)) {
-                    blockedO.push(`O(${oConn.row1},${oConn.col1})-(${oConn.row2},${oConn.col2})`);
-                }
-            });
-            if (blockedO.length > 0) {
-                console.log(`  X(${xConn.row1},${xConn.col1})-(${xConn.row2},${xConn.col2}) blocks: ${blockedO.join(', ')}`);
-            }
-        });
-        
-        console.log('O lines that would block X:');
-        oConnections.forEach(oConn => {
-            const blockedX = [];
-            xConnections.forEach(xConn => {
-                if ((xConn.establishedAtMove || 999) > (oConn.establishedAtMove || 999) && 
-                    this.doLinesIntersect(oConn, xConn)) {
-                    blockedX.push(`X(${xConn.row1},${xConn.col1})-(${xConn.row2},${xConn.col2})`);
-                }
-            });
-            if (blockedX.length > 0) {
-                console.log(`  O(${oConn.row1},${oConn.col1})-(${oConn.row2},${oConn.col2}) blocks: ${blockedX.join(', ')}`);
-            }
-        });
-    }
-
     // UTILITY: Debug information
     debugPrint() {
         console.log('=== DIAGONAL LINES DEBUG ===');
         console.log(`Board size: ${this.gameCore.size}x${this.gameCore.size}`);
-        console.log(`Cell size: ${this.cellSize}px`);
         console.log(`Total connections: ${this.diagonalConnections.length}`);
         
         const stats = this.getStatistics();
@@ -510,7 +552,7 @@ class ConnectionGameDiagonalLines {
         
         console.log('Connections:');
         this.diagonalConnections.forEach((conn, i) => {
-            console.log(`  ${i + 1}. ${conn.player} (${conn.row1},${conn.col1}) ↔ (${conn.row2},${conn.col2}) [${conn.type}]`);
+            console.log(`  ${i + 1}. ${conn.player} (${conn.row1},${conn.col1}) ↔ (${conn.row2},${conn.col2}) [${conn.type}] move:${conn.establishedAtMove}`);
         });
         
         console.log('=== END DEBUG ===');
@@ -531,6 +573,7 @@ function addDiagonalLineStyles() {
         
         .diagonal-line {
             pointer-events: none;
+            vector-effect: non-scaling-stroke;
         }
         
         .diagonal-line-x {
@@ -558,3 +601,4 @@ addDiagonalLineStyles();
 
 // Export for use in other modules
 window.ConnectionGameDiagonalLines = ConnectionGameDiagonalLines;
+
