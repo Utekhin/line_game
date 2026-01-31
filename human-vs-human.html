@@ -252,6 +252,34 @@
             text-align: center;
             margin-top: 15px;
         }
+
+        /* Board size selector */
+        .board-size-selector {
+            margin: 20px 0;
+        }
+        .board-size-selector label {
+            display: block;
+            margin-bottom: 10px;
+            color: #aaa;
+        }
+        .size-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .size-btn {
+            padding: 10px 25px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid transparent;
+        }
+        .size-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .size-btn.active {
+            background: var(--x-color);
+            border-color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -268,6 +296,15 @@
             <div id="createSection">
                 <h2>Create a New Game</h2>
                 <p>Generate a game link to share with your friend</p>
+
+                <div class="board-size-selector">
+                    <label>Board Size:</label>
+                    <div class="size-buttons">
+                        <button class="btn size-btn active" data-size="15">15×15</button>
+                        <button class="btn size-btn" data-size="25">25×25</button>
+                    </div>
+                </div>
+
                 <button class="btn" id="createGameBtn">Create Game</button>
             </div>
 
@@ -444,6 +481,28 @@
             document.getElementById('createGameBtn').addEventListener('click', () => this.createGame());
             document.getElementById('copyLinkBtn').addEventListener('click', () => this.copyLink());
             document.getElementById('resignBtn').addEventListener('click', () => this.resign());
+
+            // Board size selector
+            document.querySelectorAll('.size-btn').forEach(btn => {
+                btn.addEventListener('click', () => this.selectBoardSize(parseInt(btn.dataset.size)));
+            });
+        }
+
+        selectBoardSize(size) {
+            // Update active button
+            document.querySelectorAll('.size-btn').forEach(btn => {
+                btn.classList.toggle('active', parseInt(btn.dataset.size) === size);
+            });
+
+            // Update game configuration
+            this.boardSize = size;
+            this.board = this.createEmptyBoard();
+            this.cellSize = calculateCellSize(this.boardSize);
+            this.applyCSSVariables();
+            this.createBoard();
+            this.createBorderIndicators();
+
+            console.log(`Board size changed to ${size}×${size}`);
         }
 
         createBoard() {
