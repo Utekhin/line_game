@@ -44,6 +44,8 @@ h1 {
 }
 .board-area {
   flex-shrink: 0;
+  width: min(65vw, 500px);
+  min-width: 350px;
 }
 .side-panel {
   flex: 1;
@@ -58,6 +60,11 @@ h1 {
   .game-layout {
     flex-direction: column;
     align-items: center;
+  }
+  .board-area {
+    width: 100%;
+    max-width: 500px;
+    min-width: unset;
   }
   .side-panel {
     width: 100%;
@@ -611,7 +618,6 @@ button:disabled {
   align-items: center;
   justify-content: center;
   width: 100%;
-  max-width: min(80vw, 70vh);
 }
 .border-indicator {
   font-weight: bold;
@@ -625,7 +631,6 @@ button:disabled {
   text-align: center;
   padding: 5px 0;
   width: 100%;
-  max-width: min(80vw, 70vh);
 }
 .left-border, .right-border {
   color: #4CAF50;
@@ -636,8 +641,9 @@ button:disabled {
 /* Override board-container when inside wrapper */
 .board-with-sides .board-container {
   flex: 1;
-  max-width: none;
-  width: auto;
+  max-width: 100%;
+  width: 100%;
+  min-width: 300px;
 }
 </style>
 </head>
