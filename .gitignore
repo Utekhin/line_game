@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+*.DS_Store
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Screenshots and images (not needed for deployment)
+*.png
+*.jpg
+*.jpeg
+
+# Backup files
+*~
+*.bak
+*.backup
+
+# Plan files
+*.md.bak
