@@ -556,27 +556,40 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
 }
 .board-with-sides {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: min(80vw, 70vh);
 }
 .border-indicator {
   font-weight: bold;
   font-size: 12px;
   letter-spacing: 2px;
   opacity: 0.7;
+  flex-shrink: 0;
 }
 .top-border, .bottom-border {
   color: #2196F3;
   text-align: center;
   padding: 5px 0;
+  width: 100%;
+  max-width: min(80vw, 70vh);
 }
 .left-border, .right-border {
   color: #4CAF50;
   line-height: 1.75;
   padding: 0 8px;
   font-size: 11px;
+}
+/* Override board-container when inside wrapper */
+.board-with-sides .board-container {
+  flex: 1;
+  max-width: none;
+  width: auto;
 }
 </style>
 </head>
