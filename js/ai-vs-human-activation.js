@@ -428,9 +428,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Wait a bit longer for scripts to settle, then start robust loading
     setTimeout(async () => {
-        // Check if this is an AI vs Human page
-        const isAIvsHumanPage = document.title.includes('AI vs Human') || 
-                              document.querySelector('h1')?.textContent?.includes('AI vs Human');
+        // Check if this is an AI vs Human page (accept both orderings)
+        const pageTitle = document.title.toLowerCase();
+        const h1Text = document.querySelector('h1')?.textContent?.toLowerCase() || '';
+        const isAIvsHumanPage = pageTitle.includes('human vs ai') ||
+                              pageTitle.includes('ai vs human') ||
+                              h1Text.includes('human vs ai') ||
+                              h1Text.includes('ai vs human');
         
         if (isAIvsHumanPage) {
             console.log('🎮 AI vs Human page detected - starting robust activation...');
