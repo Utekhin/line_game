@@ -17,9 +17,9 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  max-width: 800px;
+  max-width: 950px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 10px 15px;
   background-color: #f5f7fa;
   color: #333;
 }
@@ -27,23 +27,49 @@ body {
 h1 {
   text-align: center;
   color: #2c3e50;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
 }
 
 .game-container {
   display: flex;
   flex-direction: column;
+  gap: 15px;
+}
+
+/* Desktop: board left, controls right */
+.game-layout {
+  display: flex;
   gap: 20px;
-  min-height: 100vh; /* STABILITY FIX */
+  align-items: flex-start;
+}
+.board-area {
+  flex-shrink: 0;
+}
+.side-panel {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Mobile: stack vertically */
+@media (max-width: 800px) {
+  .game-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+  .side-panel {
+    width: 100%;
+    min-width: unset;
+  }
 }
 
 .board-section {
   background-color: white;
   border-radius: 10px;
-  padding: 20px;
+  padding: 15px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  flex-shrink: 0; /* STABILITY FIX */
-  min-height: 500px; /* STABILITY FIX */
 }
 
 .board-header {
@@ -268,8 +294,30 @@ h1 {
 .controls-section {
   background-color: white;
   border-radius: 10px;
-  padding: 20px;
+  padding: 15px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.side-panel .status-container {
+  background-color: white;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.side-panel .controls {
+  background-color: white;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.side-panel .log-section {
+  background-color: white;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
 }
 
 .controls-header {
@@ -594,26 +642,41 @@ button:disabled {
 </style>
 </head>
 <body>
-    <a href="/" style="color:#888;text-decoration:none;display:block;margin-bottom:10px;">← Back to Home</a>
-    <h1>Connection Game - Human vs AI</h1>
-    <p style="text-align:center;color:#666;margin-bottom:20px;">
+    <a href="/" style="color:#888;text-decoration:none;display:block;margin-bottom:5px;font-size:0.85rem;">← Back to Home</a>
+    <h1 style="font-size:1.4rem;margin-bottom:5px;">Human vs AI</h1>
+    <p style="text-align:center;color:#666;margin-bottom:10px;font-size:0.85rem;">
         <span style="color:#2196F3;font-weight:bold;">X</span> connects top ↔ bottom |
         <span style="color:#4CAF50;font-weight:bold;">O</span> connects left ↔ right
     </p>
 
     <div class="game-container">
-        
-        <!-- Game Board -->
-        <div class="board-section">
-            <div class="board-header">
-                <h2>Game Board</h2>
-                <div class="status-container">
+        <div class="game-layout">
+            <!-- Board Area -->
+            <div class="board-area">
+                <div class="board-wrapper">
+                    <div class="border-indicator top-border">X X X X X X X X X X X X X X X</div>
+                    <div class="board-with-sides">
+                        <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                        <div class="board-container">
+                            <div class="board-grid" id="gameBoard"></div>
+                            <svg id="diagonal-lines-svg"></svg>
+                            <svg id="path-overlay"></svg>
+                        </div>
+                        <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
+                    </div>
+                    <div class="border-indicator bottom-border">X X X X X X X X X X X X X X X</div>
+                </div>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="side-panel">
+                <div class="status-container" style="flex-direction:column;gap:8px;">
                     <div class="status-item">
-                        <div class="label">CURRENT PLAYER</div>
+                        <div class="label">PLAYER</div>
                         <div id="currentPlayer" class="value current-player-x">X (AI)</div>
                     </div>
                     <div class="status-item">
-                        <div class="label">MOVE COUNT</div>
+                        <div class="label">MOVES</div>
                         <div id="moveCount" class="value">0</div>
                     </div>
                     <div class="status-item">
@@ -621,41 +684,15 @@ button:disabled {
                         <div id="gameStatus" class="value">Ready</div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="board-wrapper">
-                <div class="border-indicator top-border">X X X X X X X X X X X X X X X</div>
-                <div class="board-with-sides">
-                    <div class="border-indicator left-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
-                    <div class="board-container">
-                        <div class="board-grid" id="gameBoard"></div>
-                        <svg id="diagonal-lines-svg"></svg>
-                        <svg id="path-overlay"></svg>
-                    </div>
-                    <div class="border-indicator right-border">O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O<br>O</div>
-                </div>
-                <div class="border-indicator bottom-border">X X X X X X X X X X X X X X X</div>
-            </div>
-        </div>
-        
-        <!-- Game Controls -->
-        <div class="controls-section">
-            <div class="controls-header">
-                <h2>Game Controls</h2>
-                <div id="gameProgress">AI vs Human - Click Start to Begin</div>
-            </div>
 
-            <div class="controls">
-                <button id="mainButton">Start Game</button>
+                <div class="controls">
+                    <button id="mainButton">Start Game</button>
+                </div>
+
+                <div class="log-section" style="max-height:200px;">
+                    <div id="gameLog"></div>
+                </div>
             </div>
-        </div>
-        
-        <!-- Game Log -->
-        <div class="log-section">
-            <div class="log-header">
-                <h2>Game Log</h2>
-            </div>
-            <div id="gameLog"></div>
         </div>
     </div>
 <!-- TensorFlow.js for Neural AI -->

@@ -105,9 +105,38 @@
             display: none;
             background: rgba(255,255,255,0.05);
             border-radius: 15px;
-            padding: 20px;
+            padding: 15px;
         }
         .game-section.active { display: block; }
+
+        /* Desktop: board left, controls right */
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .board-area {
+            flex-shrink: 0;
+        }
+        .side-panel {
+            flex: 1;
+            min-width: 150px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Mobile: stack vertically */
+        @media (max-width: 700px) {
+            .game-layout {
+                flex-direction: column;
+                align-items: center;
+            }
+            .side-panel {
+                width: 100%;
+                min-width: unset;
+            }
+        }
         .board-outer-container {
             display: flex;
             justify-content: center;
@@ -151,10 +180,9 @@
         /* Turn Indicator */
         .turn-indicator {
             text-align: center;
-            padding: 15px;
-            font-size: 1.2rem;
+            padding: 12px;
+            font-size: 1.1rem;
             border-radius: 8px;
-            margin-bottom: 15px;
         }
         .turn-indicator.your-turn { background: rgba(76,175,80,0.3); }
         .turn-indicator.opponent-turn { background: rgba(255,152,0,0.3); }
@@ -162,14 +190,20 @@
         /* Game Info */
         .game-info {
             display: flex;
-            justify-content: space-around;
-            margin-top: 20px;
-            padding: 15px;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
             background: rgba(0,0,0,0.2);
             border-radius: 8px;
         }
         .player-info {
             text-align: center;
+        }
+        @media (max-width: 700px) {
+            .game-info {
+                flex-direction: row;
+                justify-content: space-around;
+            }
         }
         .player-info .role {
             font-size: 2rem;
@@ -335,38 +369,44 @@
 
         <!-- Game Section - Board generated dynamically -->
         <div class="game-section" id="gameSection">
-            <div class="turn-indicator" id="turnIndicator">Waiting...</div>
+            <div class="game-layout">
+                <div class="board-area">
+                    <div class="board-wrapper">
+                        <div class="border-indicator top-border" id="topBorder"></div>
+                        <div class="board-with-sides">
+                            <div class="border-indicator left-border" id="leftBorder"></div>
+                            <div class="board-outer-container">
+                                <div class="board-wrapper-inner">
+                                    <div class="board" id="board"></div>
+                                    <svg id="diagonal-svg"></svg>
+                                </div>
+                            </div>
+                            <div class="border-indicator right-border" id="rightBorder"></div>
+                        </div>
+                        <div class="border-indicator bottom-border" id="bottomBorder"></div>
+                    </div>
+                </div>
 
-            <div class="board-wrapper">
-                <div class="border-indicator top-border" id="topBorder"></div>
-                <div class="board-with-sides">
-                    <div class="border-indicator left-border" id="leftBorder"></div>
-                    <div class="board-outer-container">
-                        <div class="board-wrapper-inner">
-                            <div class="board" id="board"></div>
-                            <svg id="diagonal-svg"></svg>
+                <div class="side-panel">
+                    <div class="turn-indicator" id="turnIndicator">Waiting...</div>
+
+                    <div class="game-info">
+                        <div class="player-info X">
+                            <div class="role">X</div>
+                            <div>Top↔Bottom</div>
+                            <div id="playerXLabel">-</div>
+                        </div>
+                        <div class="player-info O">
+                            <div class="role">O</div>
+                            <div>Left↔Right</div>
+                            <div id="playerOLabel">-</div>
                         </div>
                     </div>
-                    <div class="border-indicator right-border" id="rightBorder"></div>
-                </div>
-                <div class="border-indicator bottom-border" id="bottomBorder"></div>
-            </div>
 
-            <div class="game-info">
-                <div class="player-info X">
-                    <div class="role">X</div>
-                    <div>Vertical (Top↔Bottom)</div>
-                    <div id="playerXLabel">-</div>
+                    <div class="game-controls">
+                        <button class="btn resign" id="resignBtn" disabled>🏳️ Resign</button>
+                    </div>
                 </div>
-                <div class="player-info O">
-                    <div class="role">O</div>
-                    <div>Horizontal (Left↔Right)</div>
-                    <div id="playerOLabel">-</div>
-                </div>
-            </div>
-
-            <div class="game-controls">
-                <button class="btn resign" id="resignBtn" disabled>🏳️ Resign</button>
             </div>
         </div>
     </div>
