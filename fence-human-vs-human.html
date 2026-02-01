@@ -555,6 +555,13 @@
             this.myRole = null;
             this.gameStarted = false;
 
+            // Polling fallback
+            this.usePolling = false;
+            this.pollingToken = null;
+            this.pollInterval = null;
+            this.lastPollTime = 0;
+            this.wsConnectTimeout = null;
+
             // Game modules
             this.gameCore = new FenceGameCore(this.boardSize, this.initialPool);
             this.fenceDetector = new FenceDetector(this.gameCore);
@@ -667,39 +674,182 @@
 
         connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            this.ws = new WebSocket(`${protocol}//${window.location.host}`);
 
-            this.ws.onopen = () => {
-                console.log('WebSocket connected');
-                const urlParams = new URLSearchParams(window.location.search);
-                const gameCode = urlParams.get('game');
-                if (gameCode) {
-                    this.joinGame(gameCode);
+            // Set timeout for WebSocket connection
+            this.wsConnectTimeout = setTimeout(() => {
+                console.log('WebSocket connection timeout, falling back to polling');
+                if (this.ws) {
+                    this.ws.close();
                 }
-            };
+                this.enablePollingMode();
+            }, 5000);
 
-            this.ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                this.handleMessage(data);
-            };
+            try {
+                this.ws = new WebSocket(`${protocol}//${window.location.host}`);
 
-            this.ws.onclose = () => {
-                console.log('WebSocket disconnected');
-            };
+                this.ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    clearTimeout(this.wsConnectTimeout);
+                    this.usePolling = false;
+
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const gameCode = urlParams.get('game');
+                    if (gameCode) {
+                        this.joinGame(gameCode);
+                    }
+                };
+
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleMessage(data);
+                };
+
+                this.ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    if (this.gameStarted && !this.usePolling) {
+                        console.log('Switching to polling mode mid-game');
+                        this.enablePollingMode();
+                    }
+                };
+
+                this.ws.onerror = (error) => {
+                    console.log('WebSocket error, falling back to polling');
+                    clearTimeout(this.wsConnectTimeout);
+                    this.enablePollingMode();
+                };
+            } catch (e) {
+                console.log('WebSocket not available, using polling');
+                clearTimeout(this.wsConnectTimeout);
+                this.enablePollingMode();
+            }
         }
 
-        createGame() {
-            this.ws.send(JSON.stringify({
-                type: 'CREATE_FENCE_GAME'
-            }));
+        enablePollingMode() {
+            if (this.usePolling) return;
+            this.usePolling = true;
+            console.log('Polling mode enabled');
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameCode = urlParams.get('game');
+            if (gameCode && !this.gameStarted) {
+                this.joinGame(gameCode);
+            }
         }
 
-        joinGame(gameCode) {
+        startPolling() {
+            if (this.pollInterval) return;
+            this.pollInterval = setInterval(() => this.pollGameState(), 1000);
+            console.log('Started polling');
+        }
+
+        stopPolling() {
+            if (this.pollInterval) {
+                clearInterval(this.pollInterval);
+                this.pollInterval = null;
+                console.log('Stopped polling');
+            }
+        }
+
+        async pollGameState() {
+            if (!this.pollingToken) return;
+
+            try {
+                const response = await fetch(`/api/fence/state?token=${this.pollingToken}&since=${this.lastPollTime}`);
+                if (!response.ok) {
+                    console.error('Poll failed:', response.status);
+                    return;
+                }
+
+                const data = await response.json();
+                this.lastPollTime = Date.now();
+
+                for (const event of (data.events || [])) {
+                    if (event.type === 'GAME_STARTED' && !this.gameStarted) {
+                        this.onGameStarted({});
+                    } else if (event.type === 'OPPONENT_MOVE') {
+                        if (event.player !== this.myRole) {
+                            this.onOpponentMove(event);
+                        }
+                    } else if (event.type === 'CAPTURE') {
+                        if (event.capturingPlayer !== this.myRole) {
+                            this.onCapture(event);
+                        }
+                    } else if (event.type === 'GAME_OVER') {
+                        this.onGameEnded(event);
+                    }
+                }
+
+                if (data.started && !this.gameStarted) {
+                    this.onGameStarted({});
+                }
+
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+
+        async createGame() {
+            if (this.usePolling) {
+                try {
+                    const response = await fetch('/api/fence/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.pollingToken = data.token;
+                        this.onGameCreated({
+                            gameCode: data.gameCode,
+                            role: data.role
+                        });
+                        this.startPolling();
+                    } else {
+                        alert('Failed to create game: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    console.error('Create game error:', error);
+                    alert('Failed to create game. Please try again.');
+                }
+            } else {
+                this.ws.send(JSON.stringify({
+                    type: 'CREATE_FENCE_GAME'
+                }));
+            }
+        }
+
+        async joinGame(gameCode) {
             this.gameCode = gameCode;
-            this.ws.send(JSON.stringify({
-                type: 'JOIN_FENCE_GAME',
-                gameCode: gameCode
-            }));
+
+            if (this.usePolling) {
+                try {
+                    const response = await fetch('/api/fence/join', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ gameCode: gameCode })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.pollingToken = data.token;
+                        this.onGameJoined({
+                            gameCode: data.gameCode,
+                            role: data.role
+                        });
+                        this.startPolling();
+                        setTimeout(() => this.onGameStarted({}), 100);
+                    } else {
+                        this.onJoinError({ error: data.error || 'Failed to join game' });
+                    }
+                } catch (error) {
+                    console.error('Join game error:', error);
+                    this.onJoinError({ error: 'Connection failed. Please try again.' });
+                }
+            } else {
+                this.ws.send(JSON.stringify({
+                    type: 'JOIN_FENCE_GAME',
+                    gameCode: gameCode
+                }));
+            }
         }
 
         handleMessage(data) {
@@ -741,6 +891,11 @@
 
             const link = `${window.location.origin}/fence-human-vs-human.html?game=${data.gameCode}`;
             document.getElementById('gameLinkDisplay').textContent = link;
+
+            // Start polling if in polling mode (to detect when opponent joins)
+            if (this.usePolling && this.pollingToken) {
+                this.startPolling();
+            }
         }
 
         onGameJoined(data) {
@@ -779,7 +934,7 @@
             this.makeMove(row, col);
         }
 
-        makeMove(row, col) {
+        async makeMove(row, col) {
             const moveResult = this.gameCore.makeMove(row, col);
 
             if (!moveResult.success) {
@@ -791,12 +946,29 @@
             this.updateDiagonalLines();
 
             // Send move to server
-            this.ws.send(JSON.stringify({
-                type: 'FENCE_MOVE',
-                row: row,
-                col: col,
-                player: moveResult.player
-            }));
+            if (this.usePolling) {
+                try {
+                    await fetch('/api/fence/move', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            token: this.pollingToken,
+                            row: row,
+                            col: col,
+                            player: moveResult.player
+                        })
+                    });
+                } catch (error) {
+                    console.error('Move send error:', error);
+                }
+            } else {
+                this.ws.send(JSON.stringify({
+                    type: 'FENCE_MOVE',
+                    row: row,
+                    col: col,
+                    player: moveResult.player
+                }));
+            }
 
             // Check for fence completion
             const fenceResult = this.fenceDetector.detectFence({ row, col }, moveResult.player);
@@ -817,16 +989,37 @@
                     );
 
                     // Send capture to server
-                    this.ws.send(JSON.stringify({
-                        type: 'FENCE_CAPTURE',
-                        fenceCells: Array.from(fenceResult.fenceCells),
-                        enclosedCells: Array.from(enclosedCells),
-                        capturingPlayer: moveResult.player,
-                        poolX: this.gameCore.poolX,
-                        poolO: this.gameCore.poolO,
-                        capturedByX: this.gameCore.capturedByX,
-                        capturedByO: this.gameCore.capturedByO
-                    }));
+                    if (this.usePolling) {
+                        try {
+                            await fetch('/api/fence/capture', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    token: this.pollingToken,
+                                    fenceCells: Array.from(fenceResult.fenceCells),
+                                    enclosedCells: Array.from(enclosedCells),
+                                    capturingPlayer: moveResult.player,
+                                    poolX: this.gameCore.poolX,
+                                    poolO: this.gameCore.poolO,
+                                    capturedByX: this.gameCore.capturedByX,
+                                    capturedByO: this.gameCore.capturedByO
+                                })
+                            });
+                        } catch (error) {
+                            console.error('Capture send error:', error);
+                        }
+                    } else {
+                        this.ws.send(JSON.stringify({
+                            type: 'FENCE_CAPTURE',
+                            fenceCells: Array.from(fenceResult.fenceCells),
+                            enclosedCells: Array.from(enclosedCells),
+                            capturingPlayer: moveResult.player,
+                            poolX: this.gameCore.poolX,
+                            poolO: this.gameCore.poolO,
+                            capturedByX: this.gameCore.capturedByX,
+                            capturedByO: this.gameCore.capturedByO
+                        }));
+                    }
 
                     this.visualizer.showCapture(fenceResult.fenceCells, enclosedCells, captureResult);
 
@@ -1018,15 +1211,32 @@
             }
         }
 
-        endGame(winner, reason = 'pool_exhausted') {
+        async endGame(winner, reason = 'pool_exhausted') {
             this.gameStarted = false;
+            this.stopPolling();
             document.getElementById('resignBtn').disabled = true;
 
-            this.ws.send(JSON.stringify({
-                type: 'FENCE_GAME_OVER',
-                winner: winner,
-                reason: reason
-            }));
+            if (this.usePolling) {
+                try {
+                    await fetch('/api/fence/gameover', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            token: this.pollingToken,
+                            winner: winner,
+                            reason: reason
+                        })
+                    });
+                } catch (error) {
+                    console.error('Game over send error:', error);
+                }
+            } else {
+                this.ws.send(JSON.stringify({
+                    type: 'FENCE_GAME_OVER',
+                    winner: winner,
+                    reason: reason
+                }));
+            }
 
             this.showGameOver(winner, reason);
         }
@@ -1068,6 +1278,7 @@
 
         onGameEnded(data) {
             this.gameStarted = false;
+            this.stopPolling();
             document.getElementById('resignBtn').disabled = true;
             this.showGameOver(data.winner, data.reason);
         }
