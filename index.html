@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Span - Be the first to connect borders</title>
+    <title>Board Games - Span & Fence</title>
     <style>
         * {
             margin: 0;
@@ -17,112 +17,169 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             padding: 40px 20px;
             color: #fff;
         }
         h1 {
-            font-size: 2.8rem;
-            margin-bottom: 15px;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         .subtitle {
             color: #a0a0a0;
-            margin-bottom: 50px;
-            font-size: 1.2rem;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
         }
+
+        /* Game Sections */
+        .game-section {
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 40px;
+        }
+        .game-section h2 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .game-section .game-subtitle {
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+
         .game-modes {
             display: flex;
-            gap: 30px;
+            gap: 20px;
             flex-wrap: wrap;
-            justify-content: center;
-            max-width: 700px;
         }
         .game-card {
-            background: rgba(255,255,255,0.1);
-            border-radius: 20px;
-            padding: 40px 35px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 30px 25px;
             text-decoration: none;
             color: #fff;
             transition: all 0.3s ease;
             border: 2px solid rgba(255,255,255,0.1);
-            width: 300px;
+            flex: 1;
+            min-width: 250px;
+            max-width: 350px;
             text-align: center;
         }
         .game-card:hover {
-            transform: translateY(-8px);
-            background: rgba(255,255,255,0.15);
-            border-color: rgba(255,255,255,0.3);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+            transform: translateY(-6px);
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.25);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.3);
         }
         .game-card .icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+            font-size: 3rem;
+            margin-bottom: 15px;
             display: block;
         }
-        .game-card h2 {
-            font-size: 1.5rem;
-            margin-bottom: 15px;
+        .game-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 12px;
         }
         .game-card p {
             color: #b0b0b0;
-            font-size: 0.95rem;
-            line-height: 1.6;
+            font-size: 0.9rem;
+            line-height: 1.5;
         }
-        .game-card.ai {
+
+        /* Span cards */
+        .game-section.span .game-card.ai {
             border-color: rgba(76, 175, 80, 0.3);
         }
-        .game-card.ai:hover {
-            border-color: rgba(76, 175, 80, 0.6);
-            box-shadow: 0 15px 40px rgba(76, 175, 80, 0.2);
+        .game-section.span .game-card.ai:hover {
+            border-color: rgba(76, 175, 80, 0.5);
+            box-shadow: 0 12px 30px rgba(76, 175, 80, 0.15);
         }
-        .game-card.human {
+        .game-section.span .game-card.human {
             border-color: rgba(33, 150, 243, 0.3);
         }
-        .game-card.human:hover {
-            border-color: rgba(33, 150, 243, 0.6);
-            box-shadow: 0 15px 40px rgba(33, 150, 243, 0.2);
+        .game-section.span .game-card.human:hover {
+            border-color: rgba(33, 150, 243, 0.5);
+            box-shadow: 0 12px 30px rgba(33, 150, 243, 0.15);
         }
-        .rules {
-            margin-top: 50px;
-            max-width: 600px;
-            text-align: center;
-            color: #888;
-            font-size: 0.9rem;
-            line-height: 1.6;
+
+        /* Fence cards */
+        .game-section.fence .game-card {
+            border-color: rgba(255, 152, 0, 0.3);
         }
-        .rules h3 {
-            color: #aaa;
-            margin-bottom: 10px;
-            font-size: 1rem;
+        .game-section.fence .game-card:hover {
+            border-color: rgba(255, 152, 0, 0.5);
+            box-shadow: 0 12px 30px rgba(255, 152, 0, 0.15);
+        }
+
+        /* Divider */
+        .divider {
+            width: 100%;
+            max-width: 900px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            margin: 20px 0 40px 0;
+        }
+
+        /* Rules summary */
+        .rules-summary {
+            background: rgba(0,0,0,0.2);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: #999;
+        }
+        .rules-summary strong {
+            color: #ccc;
         }
     </style>
 </head>
 <body>
-    <h1>Span</h1>
-    <p class="subtitle">Be the first to connect borders</p>
+    <h1>Board Games</h1>
+    <p class="subtitle">Two strategic games of connection and capture</p>
 
-    <div class="game-modes">
-        <a href="ai-vs-human.html" class="game-card ai">
-            <span class="icon">🤖</span>
-            <h2>Human vs AI</h2>
-            <p>Challenge the AI opponent. You play as O (horizontal), AI plays as X (vertical).</p>
-        </a>
+    <!-- Span Section -->
+    <div class="game-section span">
+        <h2>🔗 Span</h2>
+        <p class="game-subtitle">Be the first to connect opposite borders</p>
+        <div class="game-modes">
+            <a href="ai-vs-human.html" class="game-card ai">
+                <span class="icon">🤖</span>
+                <h3>Human vs AI</h3>
+                <p>Challenge the AI opponent. You play as O (horizontal), AI plays as X (vertical).</p>
+            </a>
 
-        <a href="human-vs-human.html" class="game-card human">
-            <span class="icon">👥</span>
-            <h2>Human vs Human</h2>
-            <p>Play against a friend online. Create a game and share the link to invite them.</p>
-        </a>
+            <a href="human-vs-human.html" class="game-card human">
+                <span class="icon">👥</span>
+                <h3>Human vs Human</h3>
+                <p>Play against a friend online. Create a game and share the link to invite them.</p>
+            </a>
+        </div>
+        <div class="rules-summary">
+            <strong>Rules:</strong> X connects top↔bottom, O connects left↔right. First to connect wins!
+        </div>
     </div>
 
-    <div class="rules">
-        <h3>How to Play</h3>
-        <p>
-            X (vertical) wins by connecting top to bottom.<br>
-            O (horizontal) wins by connecting left to right.<br>
-            Players take turns placing their mark on the 15×15 board.
-        </p>
+    <div class="divider"></div>
+
+    <!-- Fence Section -->
+    <div class="game-section fence">
+        <h2>🏰 Fence</h2>
+        <p class="game-subtitle">Build fences to capture opponent pieces</p>
+        <div class="game-modes">
+            <a href="fence-human-vs-human.html" class="game-card">
+                <span class="icon">👥</span>
+                <h3>Human vs Human</h3>
+                <p>Play against a friend online. Build fences from border to border to capture pieces!</p>
+            </a>
+        </div>
+        <div class="rules-summary">
+            <strong>Rules:</strong> Complete a fence (border-to-border chain) to capture enclosed opponent pieces.
+            Win by exhausting opponent's pool of 50 pieces!
+        </div>
     </div>
 </body>
 </html>

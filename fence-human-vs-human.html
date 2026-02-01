@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fence - Human vs Human</title>
+    <style>
+        :root {
+            --board-size: 15;
+            --cell-size: 30px;
+            --gap-size: 1px;
+            --x-color: #2196F3;
+            --o-color: #4CAF50;
+            --fence-glow: rgba(255, 215, 0, 0.6);
+            --enclosed-shade: rgba(255, 100, 100, 0.3);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #e8e8e8 0%, #d0d0d0 100%);
+            min-height: 100vh;
+            color: #333;
+            padding: 12px 15px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 1.5rem;
+        }
+        .back-link {
+            display: inline-block;
+            color: #666;
+            text-decoration: none;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+        .back-link:hover { color: #333; }
+
+        /* Game Rules */
+        .game-rules {
+            text-align: center;
+            color: #555;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        .x-text { color: var(--x-color); font-weight: bold; }
+        .o-text { color: var(--o-color); font-weight: bold; }
+
+        /* Setup Panel */
+        .setup-panel {
+            background: rgba(255,255,255,0.8);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .setup-panel h2 { margin-bottom: 10px; font-size: 1.2rem; color: #333; }
+        .setup-panel p { color: #666; margin-bottom: 10px; font-size: 0.9rem; }
+        .btn {
+            background: var(--x-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 8px;
+        }
+        .btn:hover { background: #1976D2; }
+        .btn:disabled { background: #999; cursor: not-allowed; }
+        .btn.secondary { background: var(--o-color); }
+        .btn.secondary:hover { background: #388E3C; }
+
+        /* Game Code Display */
+        .game-code {
+            background: rgba(0,0,0,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .game-code .code {
+            font-size: 2rem;
+            font-family: monospace;
+            color: var(--o-color);
+            letter-spacing: 3px;
+        }
+        .game-code .link {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 5px;
+            word-break: break-all;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .copy-btn {
+            background: #FF9800;
+            margin-top: 10px;
+        }
+        .copy-btn:hover { background: #F57C00; }
+
+        /* Status Messages */
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .status.waiting { background: rgba(255,152,0,0.2); color: #E65100; }
+        .status.connected { background: rgba(76,175,80,0.2); color: #2E7D32; }
+        .status.error { background: rgba(244,67,54,0.2); color: #C62828; }
+
+        /* Game Section */
+        .game-section {
+            display: none;
+            background: rgba(255,255,255,0.7);
+            border-radius: 15px;
+            padding: 15px;
+        }
+        .game-section.active { display: block; }
+
+        /* Desktop: board left, controls right */
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .board-area {
+            flex-shrink: 0;
+        }
+        .side-panel {
+            flex: 1;
+            min-width: 180px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Mobile: stack vertically */
+        @media (max-width: 700px) {
+            .game-layout {
+                flex-direction: column;
+                align-items: center;
+            }
+            .side-panel {
+                width: 100%;
+                min-width: unset;
+            }
+        }
+
+        /* Board wrapper with coordinates */
+        .board-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .board-with-sides {
+            display: flex;
+            align-items: center;
+        }
+
+        /* Column numbers (top) */
+        .col-numbers {
+            display: flex;
+            padding-left: 20px;
+            margin-bottom: 2px;
+        }
+        .col-numbers span {
+            width: var(--cell-size);
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            margin-right: var(--gap-size);
+        }
+
+        /* Row numbers (left) */
+        .row-numbers {
+            display: flex;
+            flex-direction: column;
+            margin-right: 4px;
+        }
+        .row-numbers span {
+            height: var(--cell-size);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            font-size: 10px;
+            color: #666;
+            padding-right: 2px;
+            width: 16px;
+            margin-bottom: var(--gap-size);
+        }
+
+        .board-outer-container {
+            display: flex;
+            justify-content: center;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        .board-wrapper-inner {
+            position: relative;
+            display: inline-block;
+        }
+        .board {
+            display: grid;
+            gap: var(--gap-size);
+            background: #666;
+            padding: var(--gap-size);
+            border-radius: 5px;
+        }
+        .cell {
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            aspect-ratio: 1;
+        }
+        .cell:hover { background: #e0e0e0; }
+        .cell.X { color: var(--x-color); background: rgba(33,150,243,0.25); }
+        .cell.O { color: var(--o-color); background: rgba(76,175,80,0.25); }
+        .cell.disabled { cursor: not-allowed; }
+        .cell.last-move {
+            box-shadow: inset 0 0 0 2px #FF9800;
+            animation: pulse 1s infinite alternate;
+        }
+        .cell.fence-highlight {
+            box-shadow: 0 0 10px 3px var(--fence-glow);
+            animation: fence-glow 0.5s ease-in-out 3;
+        }
+        .cell.enclosed {
+            background: var(--enclosed-shade) !important;
+        }
+        .cell.captured {
+            animation: capture-fade 0.5s ease-out forwards;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+        @keyframes fence-glow {
+            0%, 100% { box-shadow: 0 0 10px 3px var(--fence-glow); }
+            50% { box-shadow: 0 0 20px 6px var(--fence-glow); }
+        }
+        @keyframes capture-fade {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        /* Turn Indicator */
+        .turn-indicator {
+            text-align: center;
+            padding: 12px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.1);
+        }
+        .turn-indicator.your-turn { background: rgba(76,175,80,0.3); }
+        .turn-indicator.opponent-turn { background: rgba(255,152,0,0.3); }
+
+        /* Pool Display */
+        .pool-display {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        .pool-item {
+            text-align: center;
+        }
+        .pool-item .player-symbol {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        .pool-item.X .player-symbol { color: var(--x-color); }
+        .pool-item.O .player-symbol { color: var(--o-color); }
+        .pool-item .pool-count {
+            font-size: 1.5rem;
+            margin-top: 5px;
+        }
+        .pool-item .pool-label {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        /* Captured Display */
+        .captured-display {
+            padding: 12px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        .captured-display h3 {
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            color: #555;
+        }
+        .captured-stats {
+            display: flex;
+            justify-content: space-around;
+        }
+        .captured-item {
+            text-align: center;
+        }
+        .captured-item .count {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .captured-item.X .count { color: var(--x-color); }
+        .captured-item.O .count { color: var(--o-color); }
+
+        /* Game Info */
+        .game-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+        .player-info {
+            text-align: center;
+        }
+        .player-info .role {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .player-info.X .role { color: var(--x-color); }
+        .player-info.O .role { color: var(--o-color); }
+
+        /* Controls */
+        .game-controls {
+            text-align: center;
+        }
+        .btn.resign {
+            background: #e74c3c;
+            margin-top: 10px;
+        }
+        .btn.resign:hover { background: #c0392b; }
+
+        /* Diagonal lines SVG overlay */
+        #diagonal-svg {
+            position: absolute;
+            top: var(--gap-size);
+            left: var(--gap-size);
+            width: calc(100% - 2 * var(--gap-size));
+            height: calc(100% - 2 * var(--gap-size));
+            pointer-events: none;
+            z-index: 10;
+        }
+        .diagonal-line-X { stroke: var(--x-color); }
+        .diagonal-line-O { stroke: var(--o-color); }
+
+        /* Capture notification */
+        .capture-notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 215, 0, 0.95);
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            z-index: 50;
+            display: none;
+            animation: slide-down 0.3s ease-out;
+        }
+        .capture-notification.active {
+            display: block;
+        }
+        @keyframes slide-down {
+            from { transform: translateX(-50%) translateY(-100%); }
+            to { transform: translateX(-50%) translateY(0); }
+        }
+
+        /* Game Over Overlay */
+        .game-over-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .game-over-overlay.active {
+            display: flex;
+        }
+        .game-over-content {
+            background: #fff;
+            padding: 30px 50px;
+            border-radius: 15px;
+            text-align: center;
+            color: #333;
+        }
+        .game-over-content h2 {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+        .game-over-content .winner { color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        <h1>Fence</h1>
+        <p class="game-rules">
+            Build fences to capture opponent pieces!<br>
+            <span class="x-text">X</span> and <span class="o-text">O</span> take turns placing pieces.<br>
+            Complete a fence (border-to-border) to capture enclosed pieces.<br>
+            Win by exhausting your opponent's pool!
+        </p>
+
+        <!-- Setup Panel -->
+        <div class="setup-panel" id="setupPanel">
+            <div id="createSection">
+                <h2>Create a New Game</h2>
+                <p>Generate a game link to share with your friend</p>
+                <button class="btn" id="createGameBtn">Create Game</button>
+            </div>
+
+            <div id="waitingSection" style="display:none;">
+                <h2>Waiting for Opponent</h2>
+                <div class="game-code">
+                    <div>Game Code:</div>
+                    <div class="code" id="gameCodeDisplay">---</div>
+                    <div class="link" id="gameLinkDisplay">---</div>
+                    <button class="btn copy-btn" id="copyLinkBtn">Copy Link</button>
+                </div>
+                <div class="status waiting">Waiting for opponent to join...</div>
+            </div>
+
+            <div id="joinSection" style="display:none;">
+                <h2>Joining Game</h2>
+                <div class="game-code">
+                    <div>Game Code:</div>
+                    <div class="code" id="joinGameCode">---</div>
+                </div>
+                <div class="status waiting" id="joinStatus">Connecting...</div>
+            </div>
+        </div>
+
+        <!-- Game Section -->
+        <div class="game-section" id="gameSection">
+            <div class="game-layout">
+                <div class="board-area">
+                    <div class="board-wrapper">
+                        <div class="col-numbers" id="colNumbers"></div>
+                        <div class="board-with-sides">
+                            <div class="row-numbers" id="rowNumbers"></div>
+                            <div class="board-outer-container">
+                                <div class="board-wrapper-inner">
+                                    <div class="board" id="board"></div>
+                                    <svg id="diagonal-svg"></svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="side-panel">
+                    <div class="turn-indicator" id="turnIndicator">Waiting...</div>
+
+                    <div class="pool-display">
+                        <div class="pool-item X">
+                            <div class="player-symbol">X</div>
+                            <div class="pool-count" id="poolX">50</div>
+                            <div class="pool-label">pieces left</div>
+                        </div>
+                        <div class="pool-item O">
+                            <div class="player-symbol">O</div>
+                            <div class="pool-count" id="poolO">50</div>
+                            <div class="pool-label">pieces left</div>
+                        </div>
+                    </div>
+
+                    <div class="captured-display">
+                        <h3>Captured Pieces</h3>
+                        <div class="captured-stats">
+                            <div class="captured-item X">
+                                <div>X captured:</div>
+                                <div class="count" id="capturedByX">0</div>
+                            </div>
+                            <div class="captured-item O">
+                                <div>O captured:</div>
+                                <div class="count" id="capturedByO">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="game-info">
+                        <div class="player-info X">
+                            <div class="role">X</div>
+                            <div id="playerXLabel">-</div>
+                        </div>
+                        <div class="player-info O">
+                            <div class="role">O</div>
+                            <div id="playerOLabel">-</div>
+                        </div>
+                    </div>
+
+                    <div class="game-controls">
+                        <button class="btn resign" id="resignBtn" disabled>🏳️ Resign</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Capture Notification -->
+    <div class="capture-notification" id="captureNotification">
+        Fence completed! Pieces captured!
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="game-over-overlay" id="gameOverOverlay">
+        <div class="game-over-content">
+            <h2 id="gameOverTitle">Game Over</h2>
+            <p id="gameOverMessage"></p>
+            <button class="btn" id="playAgainBtn">Back to Home</button>
+        </div>
+    </div>
+
+    <script src="js/fence-game-core.js"></script>
+    <script src="js/fence-detector.js"></script>
+    <script src="js/fence-region-finder.js"></script>
+    <script src="js/fence-capture.js"></script>
+    <script src="js/fence-visualizer.js"></script>
+    <script>
+    // ===== FENCE HUMAN VS HUMAN GAME =====
+
+    class FenceHumanVsHumanGame {
+        constructor() {
+            this.boardSize = 15;
+            this.cellSize = 30;
+            this.gap = 1;
+            this.initialPool = 50;
+
+            this.ws = null;
+            this.gameCode = null;
+            this.myRole = null;
+            this.gameStarted = false;
+
+            // Game modules
+            this.gameCore = new FenceGameCore(this.boardSize, this.initialPool);
+            this.fenceDetector = new FenceDetector(this.gameCore);
+            this.regionFinder = new FenceRegionFinder(this.gameCore);
+            this.captureHandler = new FenceCaptureHandler(this.gameCore);
+            this.visualizer = new FenceVisualizer(this);
+
+            this.lastMoveCell = null;
+            this.diagonalConnections = [];
+
+            this.init();
+        }
+
+        init() {
+            this.applyCSSVariables();
+            this.createBoard();
+            this.createCoordinates();
+            this.setupEventListeners();
+            this.connectWebSocket();
+
+            // Check if joining via URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameCode = urlParams.get('game');
+            if (gameCode) {
+                this.showJoinSection(gameCode);
+            }
+
+            // Handle window resize
+            window.addEventListener('resize', () => this.handleResize());
+        }
+
+        applyCSSVariables() {
+            const root = document.documentElement;
+            root.style.setProperty('--board-size', this.boardSize);
+            root.style.setProperty('--cell-size', `${this.cellSize}px`);
+            root.style.setProperty('--gap-size', `${this.gap}px`);
+        }
+
+        handleResize() {
+            const maxBoardWidth = Math.min(window.innerWidth - 250, 600);
+            const calculatedSize = Math.floor(maxBoardWidth / this.boardSize);
+            const newCellSize = Math.max(18, Math.min(calculatedSize, 35));
+
+            if (newCellSize !== this.cellSize) {
+                this.cellSize = newCellSize;
+                this.applyCSSVariables();
+                this.updateBoardStyles();
+                this.createCoordinates();
+                this.updateDiagonalLines();
+            }
+        }
+
+        updateBoardStyles() {
+            const boardEl = document.getElementById('board');
+            if (boardEl) {
+                boardEl.style.gridTemplateColumns = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+                boardEl.style.gridTemplateRows = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+            }
+        }
+
+        createBoard() {
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+            boardEl.style.gridTemplateColumns = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+            boardEl.style.gridTemplateRows = `repeat(${this.boardSize}, ${this.cellSize}px)`;
+
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.style.fontSize = `${Math.max(10, this.cellSize * 0.45)}px`;
+                    cell.addEventListener('click', () => this.handleCellClick(row, col));
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        createCoordinates() {
+            const colNumbers = document.getElementById('colNumbers');
+            colNumbers.innerHTML = '';
+            for (let col = 0; col < this.boardSize; col++) {
+                const span = document.createElement('span');
+                span.textContent = col;
+                span.style.width = `${this.cellSize}px`;
+                span.style.marginRight = `${this.gap}px`;
+                colNumbers.appendChild(span);
+            }
+
+            const rowNumbers = document.getElementById('rowNumbers');
+            rowNumbers.innerHTML = '';
+            for (let row = 0; row < this.boardSize; row++) {
+                const span = document.createElement('span');
+                span.textContent = row;
+                span.style.height = `${this.cellSize}px`;
+                span.style.marginBottom = `${this.gap}px`;
+                rowNumbers.appendChild(span);
+            }
+        }
+
+        setupEventListeners() {
+            document.getElementById('createGameBtn').addEventListener('click', () => this.createGame());
+            document.getElementById('copyLinkBtn').addEventListener('click', () => this.copyLink());
+            document.getElementById('resignBtn').addEventListener('click', () => this.resign());
+            document.getElementById('playAgainBtn').addEventListener('click', () => {
+                window.location.href = '/';
+            });
+        }
+
+        connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            this.ws.onopen = () => {
+                console.log('WebSocket connected');
+                const urlParams = new URLSearchParams(window.location.search);
+                const gameCode = urlParams.get('game');
+                if (gameCode) {
+                    this.joinGame(gameCode);
+                }
+            };
+
+            this.ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                this.handleMessage(data);
+            };
+
+            this.ws.onclose = () => {
+                console.log('WebSocket disconnected');
+            };
+        }
+
+        createGame() {
+            this.ws.send(JSON.stringify({
+                type: 'CREATE_FENCE_GAME'
+            }));
+        }
+
+        joinGame(gameCode) {
+            this.gameCode = gameCode;
+            this.ws.send(JSON.stringify({
+                type: 'JOIN_FENCE_GAME',
+                gameCode: gameCode
+            }));
+        }
+
+        handleMessage(data) {
+            switch (data.type) {
+                case 'FENCE_GAME_CREATED':
+                    this.onGameCreated(data);
+                    break;
+                case 'FENCE_GAME_JOINED':
+                    this.onGameJoined(data);
+                    break;
+                case 'FENCE_GAME_STARTED':
+                    this.onGameStarted(data);
+                    break;
+                case 'FENCE_OPPONENT_MOVE':
+                    this.onOpponentMove(data);
+                    break;
+                case 'FENCE_CAPTURE':
+                    this.onCapture(data);
+                    break;
+                case 'FENCE_GAME_ENDED':
+                    this.onGameEnded(data);
+                    break;
+                case 'FENCE_JOIN_ERROR':
+                    this.onJoinError(data);
+                    break;
+                case 'FENCE_OPPONENT_DISCONNECTED':
+                    this.onOpponentDisconnected();
+                    break;
+            }
+        }
+
+        onGameCreated(data) {
+            this.gameCode = data.gameCode;
+            this.myRole = data.role;
+
+            document.getElementById('createSection').style.display = 'none';
+            document.getElementById('waitingSection').style.display = 'block';
+            document.getElementById('gameCodeDisplay').textContent = data.gameCode;
+
+            const link = `${window.location.origin}/fence-human-vs-human.html?game=${data.gameCode}`;
+            document.getElementById('gameLinkDisplay').textContent = link;
+        }
+
+        onGameJoined(data) {
+            this.gameCode = data.gameCode;
+            this.myRole = data.role;
+            document.getElementById('joinGameCode').textContent = data.gameCode;
+            document.getElementById('joinStatus').textContent = 'Connected! Starting game...';
+            document.getElementById('joinStatus').className = 'status connected';
+        }
+
+        onGameStarted(data) {
+            this.gameStarted = true;
+            document.getElementById('setupPanel').style.display = 'none';
+            document.getElementById('gameSection').classList.add('active');
+            document.getElementById('resignBtn').disabled = false;
+
+            document.getElementById('playerXLabel').textContent = this.myRole === 'X' ? 'You' : 'Opponent';
+            document.getElementById('playerOLabel').textContent = this.myRole === 'O' ? 'You' : 'Opponent';
+
+            this.updateTurnIndicator();
+            this.updateUI();
+        }
+
+        showJoinSection(gameCode) {
+            document.getElementById('createSection').style.display = 'none';
+            document.getElementById('joinSection').style.display = 'block';
+            document.getElementById('joinGameCode').textContent = gameCode;
+        }
+
+        handleCellClick(row, col) {
+            if (!this.gameStarted) return;
+            if (this.gameCore.currentPlayer !== this.myRole) return;
+            if (this.gameCore.board[row][col] !== '') return;
+            if (this.gameCore.gameOver) return;
+
+            this.makeMove(row, col);
+        }
+
+        makeMove(row, col) {
+            const moveResult = this.gameCore.makeMove(row, col);
+
+            if (!moveResult.success) {
+                console.log('Invalid move:', moveResult.reason);
+                return;
+            }
+
+            this.updateCell(row, col, moveResult.player);
+            this.updateDiagonalLines();
+
+            // Send move to server
+            this.ws.send(JSON.stringify({
+                type: 'FENCE_MOVE',
+                row: row,
+                col: col,
+                player: moveResult.player
+            }));
+
+            // Check for fence completion
+            const fenceResult = this.fenceDetector.detectFence({ row, col }, moveResult.player);
+
+            if (fenceResult) {
+                const enclosedCells = this.regionFinder.findEnclosedRegion(
+                    fenceResult.fenceCells,
+                    fenceResult.type,
+                    fenceResult.anchors,
+                    fenceResult
+                );
+
+                if (enclosedCells.size > 0) {
+                    const captureResult = this.captureHandler.executeCapture(
+                        fenceResult.fenceCells,
+                        enclosedCells,
+                        moveResult.player
+                    );
+
+                    // Send capture to server
+                    this.ws.send(JSON.stringify({
+                        type: 'FENCE_CAPTURE',
+                        fenceCells: Array.from(fenceResult.fenceCells),
+                        enclosedCells: Array.from(enclosedCells),
+                        capturingPlayer: moveResult.player,
+                        poolX: this.gameCore.poolX,
+                        poolO: this.gameCore.poolO,
+                        capturedByX: this.gameCore.capturedByX,
+                        capturedByO: this.gameCore.capturedByO
+                    }));
+
+                    this.visualizer.showCapture(fenceResult.fenceCells, enclosedCells, captureResult);
+
+                    setTimeout(() => {
+                        this.refreshBoard();
+                        this.updateUI();
+
+                        if (this.gameCore.checkGameOver()) {
+                            this.endGame(this.gameCore.getWinner(), 'pool_exhausted');
+                        }
+                    }, 600);
+
+                    return;
+                }
+            }
+
+            if (this.gameCore.checkGameOver()) {
+                this.endGame(this.gameCore.getWinner(), 'pool_exhausted');
+                return;
+            }
+
+            this.updateTurnIndicator();
+            this.updateUI();
+        }
+
+        onOpponentMove(data) {
+            const moveResult = this.gameCore.makeMove(data.row, data.col);
+
+            this.updateCell(data.row, data.col, data.player);
+            this.updateDiagonalLines();
+            this.updateTurnIndicator();
+            this.updateUI();
+        }
+
+        onCapture(data) {
+            // Sync game state from server
+            this.gameCore.poolX = data.poolX;
+            this.gameCore.poolO = data.poolO;
+            this.gameCore.capturedByX = data.capturedByX;
+            this.gameCore.capturedByO = data.capturedByO;
+
+            const fenceCells = new Set(data.fenceCells);
+            const enclosedCells = new Set(data.enclosedCells);
+
+            // Remove pieces from board
+            for (const key of fenceCells) {
+                const [row, col] = key.split('-').map(Number);
+                if (this.gameCore.board[row][col] === data.capturingPlayer) {
+                    this.gameCore.board[row][col] = '';
+                }
+            }
+            for (const key of enclosedCells) {
+                const [row, col] = key.split('-').map(Number);
+                this.gameCore.board[row][col] = '';
+            }
+
+            this.visualizer.showCapture(fenceCells, enclosedCells, {
+                capturingPlayer: data.capturingPlayer,
+                opponentPiecesCaptured: data.capturedByX + data.capturedByO,
+                piecesReturnedToPool: fenceCells.size
+            });
+
+            setTimeout(() => {
+                this.refreshBoard();
+                this.updateUI();
+
+                if (this.gameCore.checkGameOver()) {
+                    this.endGame(this.gameCore.getWinner(), 'pool_exhausted');
+                }
+            }, 600);
+        }
+
+        updateCell(row, col, player) {
+            if (this.lastMoveCell) {
+                this.lastMoveCell.classList.remove('last-move');
+            }
+
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            if (cell) {
+                cell.textContent = player;
+                cell.classList.add(player, 'last-move');
+                this.lastMoveCell = cell;
+            }
+        }
+
+        refreshBoard() {
+            const boardEl = document.getElementById('board');
+            const cells = boardEl.querySelectorAll('.cell');
+
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const value = this.gameCore.board[row][col];
+
+                cell.textContent = value;
+                cell.className = 'cell';
+                if (value) {
+                    cell.classList.add(value);
+                }
+            });
+
+            this.lastMoveCell = null;
+            this.updateDiagonalLines();
+        }
+
+        updateUI() {
+            document.getElementById('poolX').textContent = this.gameCore.poolX;
+            document.getElementById('poolO').textContent = this.gameCore.poolO;
+            document.getElementById('capturedByX').textContent = this.gameCore.capturedByX;
+            document.getElementById('capturedByO').textContent = this.gameCore.capturedByO;
+        }
+
+        updateTurnIndicator() {
+            const indicator = document.getElementById('turnIndicator');
+            const isMyTurn = this.gameCore.currentPlayer === this.myRole;
+
+            indicator.textContent = isMyTurn ? "Your turn!" : "Opponent's turn...";
+            indicator.className = 'turn-indicator ' + (isMyTurn ? 'your-turn' : 'opponent-turn');
+        }
+
+        updateDiagonalLines() {
+            const svg = document.getElementById('diagonal-svg');
+            if (!svg) return;
+
+            this.findDiagonalConnections();
+            this.renderDiagonalLines(svg);
+        }
+
+        findDiagonalConnections() {
+            this.diagonalConnections = [];
+            const processed = new Set();
+
+            for (let row = 0; row < this.boardSize; row++) {
+                for (let col = 0; col < this.boardSize; col++) {
+                    const player = this.gameCore.board[row][col];
+                    if (!player) continue;
+
+                    const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
+                    for (const [dr, dc] of diagonals) {
+                        const newRow = row + dr;
+                        const newCol = col + dc;
+
+                        if (newRow >= 0 && newRow < this.boardSize &&
+                            newCol >= 0 && newCol < this.boardSize &&
+                            this.gameCore.board[newRow][newCol] === player) {
+
+                            const key = row < newRow || (row === newRow && col < newCol)
+                                ? `${row}-${col}-${newRow}-${newCol}`
+                                : `${newRow}-${newCol}-${row}-${col}`;
+
+                            if (!processed.has(key)) {
+                                processed.add(key);
+                                this.diagonalConnections.push({
+                                    row1: row, col1: col,
+                                    row2: newRow, col2: newCol,
+                                    player: player
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        renderDiagonalLines(svg) {
+            svg.innerHTML = '';
+
+            const totalSize = this.boardSize * this.cellSize + (this.boardSize - 1) * this.gap;
+            svg.setAttribute('viewBox', `0 0 ${totalSize} ${totalSize}`);
+
+            for (const conn of this.diagonalConnections) {
+                const x1 = conn.col1 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const y1 = conn.row1 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const x2 = conn.col2 * (this.cellSize + this.gap) + this.cellSize / 2;
+                const y2 = conn.row2 * (this.cellSize + this.gap) + this.cellSize / 2;
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke-width', Math.max(2, this.cellSize * 0.1));
+                line.setAttribute('stroke-linecap', 'round');
+                line.setAttribute('opacity', '0.7');
+                line.classList.add('diagonal-line-' + conn.player);
+
+                svg.appendChild(line);
+            }
+        }
+
+        endGame(winner, reason = 'pool_exhausted') {
+            this.gameStarted = false;
+            document.getElementById('resignBtn').disabled = true;
+
+            this.ws.send(JSON.stringify({
+                type: 'FENCE_GAME_OVER',
+                winner: winner,
+                reason: reason
+            }));
+
+            this.showGameOver(winner, reason);
+        }
+
+        showGameOver(winner, reason) {
+            const overlay = document.getElementById('gameOverOverlay');
+            const title = document.getElementById('gameOverTitle');
+            const message = document.getElementById('gameOverMessage');
+
+            if (winner === this.myRole) {
+                title.textContent = '🎉 You Win!';
+                title.className = 'winner';
+                if (reason === 'resignation') {
+                    message.textContent = 'Opponent resigned.';
+                } else {
+                    message.textContent = `You captured ${this.gameCore['capturedBy' + this.myRole]} pieces!`;
+                }
+            } else {
+                title.textContent = '😔 You Lose';
+                title.className = '';
+                if (reason === 'resignation') {
+                    message.textContent = 'You resigned.';
+                } else {
+                    message.textContent = `Opponent captured ${this.gameCore['capturedBy' + winner]} pieces.`;
+                }
+            }
+
+            overlay.classList.add('active');
+        }
+
+        resign() {
+            if (!this.gameStarted) return;
+
+            if (confirm('Are you sure you want to resign?')) {
+                const winner = this.myRole === 'X' ? 'O' : 'X';
+                this.endGame(winner, 'resignation');
+            }
+        }
+
+        onGameEnded(data) {
+            this.gameStarted = false;
+            document.getElementById('resignBtn').disabled = true;
+            this.showGameOver(data.winner, data.reason);
+        }
+
+        onJoinError(data) {
+            document.getElementById('joinStatus').textContent = 'Error: ' + data.error;
+            document.getElementById('joinStatus').className = 'status error';
+        }
+
+        onOpponentDisconnected() {
+            const indicator = document.getElementById('turnIndicator');
+            indicator.textContent = '⚠️ Opponent disconnected';
+            indicator.style.background = 'rgba(255,152,0,0.5)';
+            this.gameStarted = false;
+        }
+
+        copyLink() {
+            const link = document.getElementById('gameLinkDisplay').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                const btn = document.getElementById('copyLinkBtn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy Link', 2000);
+            });
+        }
+    }
+
+    // Initialize game
+    const game = new FenceHumanVsHumanGame();
+    </script>
+</body>
+</html>

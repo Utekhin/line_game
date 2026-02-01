@@ -17,6 +17,7 @@ if (!fs.existsSync(DATA_DIR)) {
 // ===== GAME STORAGE =====
 const activeSessions = new Map(); // sessionId -> { odisconnected, gameCore state, etc. }
 const humanVsHumanGames = new Map(); // gameCode -> { playerX, playerY, moves, etc. }
+const fenceGames = new Map(); // gameCode -> { playerX, playerY, moves, pools, etc. }
 const recordedGames = []; // All completed games for admin download
 
 // Generate random number for game codes
@@ -55,6 +56,10 @@ const server = http.createServer((req, res) => {
     // Handle game join URLs
     if (pathname.startsWith('/join/')) {
         filePath = '/human-vs-human.html';
+    }
+    // Handle Fence join URLs
+    if (pathname.startsWith('/fence-join/')) {
+        filePath = '/fence-human-vs-human.html';
     }
 
     const extname = path.extname(filePath).toLowerCase();
@@ -150,12 +155,14 @@ function handleAdminStats(req, res, url) {
     const stats = {
         totalGames: games.length,
         humanVsAI: games.filter(g => g.gameType === 'human-vs-ai').length,
-        humanVsHuman: games.filter(g => g.gameType === 'human-vs-human').length,
+        spanHumanVsHuman: games.filter(g => g.gameType === 'span-human-vs-human' || g.gameType === 'human-vs-human').length,
+        fenceHumanVsHuman: games.filter(g => g.gameType === 'fence-human-vs-human').length,
         totalMoves: games.reduce((sum, g) => sum + (g.moves?.length || 0), 0),
         xWins: games.filter(g => g.winner === 'X').length,
         oWins: games.filter(g => g.winner === 'O').length,
         activeSessions: activeSessions.size,
-        activeHvHGames: humanVsHumanGames.size
+        activeSpanGames: humanVsHumanGames.size,
+        activeFenceGames: fenceGames.size
     };
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -270,6 +277,7 @@ wss.on('connection', (ws, req) => {
 
 function handleWebSocketMessage(ws, data) {
     switch (data.type) {
+        // Span (Human vs Human)
         case 'CREATE_HVH_GAME':
             handleCreateHvHGame(ws, data);
             break;
@@ -281,6 +289,22 @@ function handleWebSocketMessage(ws, data) {
             break;
         case 'HVH_GAME_OVER':
             handleHvHGameOver(ws, data);
+            break;
+        // Fence game
+        case 'CREATE_FENCE_GAME':
+            handleCreateFenceGame(ws, data);
+            break;
+        case 'JOIN_FENCE_GAME':
+            handleJoinFenceGame(ws, data);
+            break;
+        case 'FENCE_MOVE':
+            handleFenceMove(ws, data);
+            break;
+        case 'FENCE_CAPTURE':
+            handleFenceCapture(ws, data);
+            break;
+        case 'FENCE_GAME_OVER':
+            handleFenceGameOver(ws, data);
             break;
         case 'PING':
             ws.send(JSON.stringify({ type: 'PONG' }));
@@ -440,25 +464,25 @@ function handleHvHGameOver(ws, data) {
 
 function handlePlayerDisconnect(ws) {
     if (ws.gameCode) {
-        const game = humanVsHumanGames.get(ws.gameCode);
-        if (game) {
-            const opponent = ws.playerRole === 'X' ? game.playerY : game.playerX;
+        // Check Span games
+        const spanGame = humanVsHumanGames.get(ws.gameCode);
+        if (spanGame) {
+            const opponent = ws.playerRole === 'X' ? spanGame.playerY : spanGame.playerX;
             if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
                 opponent.ws.send(JSON.stringify({
                     type: 'HVH_OPPONENT_DISCONNECTED'
                 }));
             }
 
-            // Save partial game if it had moves
-            if (game.moves.length > 0) {
+            if (spanGame.moves.length > 0) {
                 const gameRecord = {
-                    gameId: game.gameCode,
-                    gameType: 'human-vs-human',
+                    gameId: spanGame.gameCode,
+                    gameType: 'span-human-vs-human',
                     winner: null,
                     reason: 'disconnect',
-                    totalMoves: game.moves.length,
-                    moves: game.moves,
-                    startedAt: new Date(game.created).toISOString(),
+                    totalMoves: spanGame.moves.length,
+                    moves: spanGame.moves,
+                    startedAt: new Date(spanGame.created).toISOString(),
                     endedAt: new Date().toISOString()
                 };
                 saveRecordedGame(gameRecord);
@@ -466,7 +490,214 @@ function handlePlayerDisconnect(ws) {
 
             humanVsHumanGames.delete(ws.gameCode);
         }
+
+        // Check Fence games
+        const fenceGame = fenceGames.get(ws.gameCode);
+        if (fenceGame) {
+            const opponent = ws.playerRole === 'X' ? fenceGame.playerY : fenceGame.playerX;
+            if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
+                opponent.ws.send(JSON.stringify({
+                    type: 'FENCE_OPPONENT_DISCONNECTED'
+                }));
+            }
+
+            if (fenceGame.moves.length > 0) {
+                const gameRecord = {
+                    gameId: fenceGame.gameCode,
+                    gameType: 'fence-human-vs-human',
+                    winner: null,
+                    reason: 'disconnect',
+                    totalMoves: fenceGame.moves.length,
+                    moves: fenceGame.moves,
+                    poolX: fenceGame.poolX,
+                    poolO: fenceGame.poolO,
+                    capturedByX: fenceGame.capturedByX,
+                    capturedByO: fenceGame.capturedByO,
+                    startedAt: new Date(fenceGame.created).toISOString(),
+                    endedAt: new Date().toISOString()
+                };
+                saveRecordedGame(gameRecord);
+            }
+
+            fenceGames.delete(ws.gameCode);
+        }
     }
+}
+
+// ===== FENCE GAME HANDLERS =====
+function handleCreateFenceGame(ws, data) {
+    const playerXCode = generatePlayerCode();
+    const playerYCode = generatePlayerCode();
+    const gameCode = `F${playerXCode}-${playerYCode}`;
+
+    const game = {
+        gameCode: gameCode,
+        playerXCode: playerXCode,
+        playerYCode: playerYCode,
+        playerX: { ws: ws, sessionId: ws.sessionId },
+        playerY: null,
+        currentPlayer: 'X',
+        moves: [],
+        poolX: 50,
+        poolO: 50,
+        capturedByX: 0,
+        capturedByO: 0,
+        created: Date.now(),
+        started: false
+    };
+
+    fenceGames.set(gameCode, game);
+    ws.gameCode = gameCode;
+    ws.playerRole = 'X';
+
+    console.log(`🏰 Fence game created: ${gameCode}`);
+
+    ws.send(JSON.stringify({
+        type: 'FENCE_GAME_CREATED',
+        gameCode: gameCode,
+        playerCode: playerXCode,
+        role: 'X'
+    }));
+}
+
+function handleJoinFenceGame(ws, data) {
+    const gameCode = data.gameCode;
+    const game = fenceGames.get(gameCode);
+
+    if (!game) {
+        ws.send(JSON.stringify({
+            type: 'FENCE_JOIN_ERROR',
+            error: 'Game not found'
+        }));
+        return;
+    }
+
+    if (game.playerY) {
+        ws.send(JSON.stringify({
+            type: 'FENCE_JOIN_ERROR',
+            error: 'Game is full'
+        }));
+        return;
+    }
+
+    game.playerY = { ws: ws, sessionId: ws.sessionId };
+    game.started = true;
+    ws.gameCode = gameCode;
+    ws.playerRole = 'O';
+
+    console.log(`🏰 Player Y joined Fence: ${gameCode}`);
+
+    // Notify player Y
+    ws.send(JSON.stringify({
+        type: 'FENCE_GAME_JOINED',
+        gameCode: gameCode,
+        role: 'O'
+    }));
+
+    // Notify both players game started
+    if (game.playerX.ws.readyState === WebSocket.OPEN) {
+        game.playerX.ws.send(JSON.stringify({
+            type: 'FENCE_GAME_STARTED',
+            opponentJoined: true
+        }));
+    }
+
+    ws.send(JSON.stringify({
+        type: 'FENCE_GAME_STARTED',
+        opponentJoined: true
+    }));
+}
+
+function handleFenceMove(ws, data) {
+    const game = fenceGames.get(ws.gameCode);
+    if (!game || !game.started) return;
+
+    const move = {
+        moveNumber: game.moves.length + 1,
+        player: data.player,
+        row: data.row,
+        col: data.col,
+        timestamp: Date.now()
+    };
+    game.moves.push(move);
+    game.currentPlayer = data.player === 'X' ? 'O' : 'X';
+
+    // Forward move to opponent
+    const opponent = data.player === 'X' ? game.playerY : game.playerX;
+    if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
+        opponent.ws.send(JSON.stringify({
+            type: 'FENCE_OPPONENT_MOVE',
+            row: data.row,
+            col: data.col,
+            player: data.player,
+            moveNumber: move.moveNumber
+        }));
+    }
+}
+
+function handleFenceCapture(ws, data) {
+    const game = fenceGames.get(ws.gameCode);
+    if (!game || !game.started) return;
+
+    // Update game state
+    game.poolX = data.poolX;
+    game.poolO = data.poolO;
+    game.capturedByX = data.capturedByX;
+    game.capturedByO = data.capturedByO;
+
+    // Forward capture to opponent
+    const opponent = data.capturingPlayer === 'X' ? game.playerY : game.playerX;
+    if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
+        opponent.ws.send(JSON.stringify({
+            type: 'FENCE_CAPTURE',
+            fenceCells: data.fenceCells,
+            enclosedCells: data.enclosedCells,
+            capturingPlayer: data.capturingPlayer,
+            poolX: data.poolX,
+            poolO: data.poolO,
+            capturedByX: data.capturedByX,
+            capturedByO: data.capturedByO
+        }));
+    }
+
+    console.log(`🏰 Fence capture by ${data.capturingPlayer}: pools X=${data.poolX}, O=${data.poolO}`);
+}
+
+function handleFenceGameOver(ws, data) {
+    const game = fenceGames.get(ws.gameCode);
+    if (!game) return;
+
+    const gameRecord = {
+        gameId: game.gameCode,
+        gameType: 'fence-human-vs-human',
+        winner: data.winner,
+        endReason: data.reason || 'pool_exhausted',
+        resignedBy: data.reason === 'resignation' ? (data.winner === 'X' ? 'O' : 'X') : null,
+        totalMoves: game.moves.length,
+        moves: game.moves,
+        poolX: game.poolX,
+        poolO: game.poolO,
+        capturedByX: game.capturedByX,
+        capturedByO: game.capturedByO,
+        startedAt: new Date(game.created).toISOString(),
+        endedAt: new Date().toISOString()
+    };
+
+    saveRecordedGame(gameRecord);
+
+    // Notify opponent
+    const opponent = ws.playerRole === 'X' ? game.playerY : game.playerX;
+    if (opponent && opponent.ws.readyState === WebSocket.OPEN) {
+        opponent.ws.send(JSON.stringify({
+            type: 'FENCE_GAME_ENDED',
+            winner: data.winner,
+            reason: data.reason || 'pool_exhausted'
+        }));
+    }
+
+    console.log(`🏰 Fence game ended: ${game.gameCode} - Winner: ${data.winner}, Reason: ${data.reason || 'pool_exhausted'}`);
+
+    fenceGames.delete(ws.gameCode);
 }
 
 // Heartbeat interval
