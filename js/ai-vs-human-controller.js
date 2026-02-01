@@ -382,8 +382,10 @@ class AIvsHumanController {
     
     setupBoardClickHandlers() {
         document.addEventListener('click', (event) => {
-            if (event.target.classList.contains('cell')) {
-                this.handleCellClick(event.target);
+            // Use closest() to handle clicks on child elements inside cells
+            const cell = event.target.closest('.cell');
+            if (cell) {
+                this.handleCellClick(cell);
             }
         });
     }
