@@ -332,6 +332,7 @@
 
         <!-- Setup Panel -->
         <div class="setup-panel" id="setupPanel">
+            <div id="connectionStatus" style="font-size: 0.8rem; margin-bottom: 10px; color: #888;">🔴 Connecting...</div>
             <div id="createSection">
                 <h2>Create a New Game</h2>
                 <p>Generate a game link to share with your friend</p>
@@ -509,14 +510,14 @@
         connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-            // Set timeout for WebSocket connection
+            // Set timeout for WebSocket connection (reduced to 3s for faster fallback)
             this.wsConnectTimeout = setTimeout(() => {
                 console.log('WebSocket connection timeout, falling back to polling');
                 if (this.ws) {
                     this.ws.close();
                 }
                 this.enablePollingMode();
-            }, 5000);
+            }, 3000);
 
             try {
                 this.ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -525,6 +526,7 @@
                     console.log('WebSocket connected');
                     clearTimeout(this.wsConnectTimeout);
                     this.usePolling = false;
+                    this.updateConnectionStatus('connected');
 
                     const urlParams = new URLSearchParams(window.location.search);
                     const gameCode = urlParams.get('game');
@@ -544,6 +546,9 @@
                     if (this.gameStarted && !this.usePolling) {
                         console.log('Switching to polling mode mid-game');
                         this.enablePollingMode();
+                    } else if (!this.usePolling) {
+                        // Connection closed before game started - enable polling
+                        this.enablePollingMode();
                     }
                 };
 
@@ -559,10 +564,45 @@
             }
         }
 
+        // Check if WebSocket is ready to send
+        isWebSocketReady() {
+            return this.ws && this.ws.readyState === WebSocket.OPEN;
+        }
+
+        // Safe WebSocket send - falls back to polling if not ready
+        wsSend(data) {
+            if (this.isWebSocketReady()) {
+                try {
+                    this.ws.send(JSON.stringify(data));
+                    return true;
+                } catch (e) {
+                    console.log('WebSocket send failed, switching to polling');
+                    this.enablePollingMode();
+                    return false;
+                }
+            } else {
+                // WebSocket not ready, switch to polling
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready, switching to polling');
+                    this.enablePollingMode();
+                }
+                return false;
+            }
+        }
+
+        updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                statusEl.textContent = status === 'connected' ? '🟢 Connected' :
+                                       status === 'polling' ? '🟡 Polling mode' : '🔴 Connecting...';
+            }
+        }
+
         enablePollingMode() {
             if (this.usePolling) return; // Already in polling mode
             this.usePolling = true;
             console.log('Polling mode enabled');
+            this.updateConnectionStatus('polling');
 
             // Check if we need to auto-join a game
             const urlParams = new URLSearchParams(window.location.search);
@@ -714,7 +754,18 @@
         }
 
         async createGame() {
-            if (this.usePolling) {
+            // Try WebSocket first, fall back to polling if not ready
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'CREATE_HVH_GAME',
+                    boardSize: this.boardSize
+                }));
+            } else {
+                // Use polling (either already in polling mode or WebSocket not ready)
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for createGame, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     const response = await fetch('/api/span/create', {
                         method: 'POST',
@@ -736,18 +787,24 @@
                     console.error('Create game error:', error);
                     alert('Failed to create game. Please try again.');
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'CREATE_HVH_GAME',
-                    boardSize: this.boardSize
-                }));
             }
         }
 
         async joinGame(gameCode) {
             this.gameCode = gameCode;
 
-            if (this.usePolling) {
+            // Try WebSocket first, fall back to polling if not ready
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'JOIN_HVH_GAME',
+                    gameCode: gameCode
+                }));
+            } else {
+                // Use polling
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for joinGame, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     const response = await fetch('/api/span/join', {
                         method: 'POST',
@@ -771,11 +828,6 @@
                     console.error('Join game error:', error);
                     this.onJoinError({ error: 'Connection failed. Please try again.' });
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'JOIN_HVH_GAME',
-                    gameCode: gameCode
-                }));
             }
         }
 
@@ -874,7 +926,21 @@
             this.updateCell(row, col, this.myRole);
             this.updateDiagonalLines();
 
-            if (this.usePolling) {
+            // Send move via WebSocket or polling
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'HVH_MOVE',
+                    row: row,
+                    col: col,
+                    player: this.myRole,
+                    boardState: this.getBoardState()
+                }));
+            } else {
+                // Use polling for move
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for move, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     await fetch('/api/span/move', {
                         method: 'POST',
@@ -890,14 +956,6 @@
                 } catch (error) {
                     console.error('Move send error:', error);
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'HVH_MOVE',
-                    row: row,
-                    col: col,
-                    player: this.myRole,
-                    boardState: this.getBoardState()
-                }));
             }
 
             // Win check: minimum moves = 2 * boardSize - 1

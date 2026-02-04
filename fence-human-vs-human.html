@@ -427,6 +427,7 @@
 
         <!-- Setup Panel -->
         <div class="setup-panel" id="setupPanel">
+            <div id="connectionStatus" style="font-size: 0.8rem; margin-bottom: 10px; color: #888;">🔴 Connecting...</div>
             <div id="createSection">
                 <h2>Create a New Game</h2>
                 <p>Generate a game link to share with your friend</p>
@@ -675,14 +676,14 @@
         connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-            // Set timeout for WebSocket connection
+            // Set timeout for WebSocket connection (reduced to 3s for faster fallback)
             this.wsConnectTimeout = setTimeout(() => {
                 console.log('WebSocket connection timeout, falling back to polling');
                 if (this.ws) {
                     this.ws.close();
                 }
                 this.enablePollingMode();
-            }, 5000);
+            }, 3000);
 
             try {
                 this.ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -691,6 +692,7 @@
                     console.log('WebSocket connected');
                     clearTimeout(this.wsConnectTimeout);
                     this.usePolling = false;
+                    this.updateConnectionStatus('connected');
 
                     const urlParams = new URLSearchParams(window.location.search);
                     const gameCode = urlParams.get('game');
@@ -709,6 +711,8 @@
                     if (this.gameStarted && !this.usePolling) {
                         console.log('Switching to polling mode mid-game');
                         this.enablePollingMode();
+                    } else if (!this.usePolling) {
+                        this.enablePollingMode();
                     }
                 };
 
@@ -724,10 +728,24 @@
             }
         }
 
+        // Check if WebSocket is ready to send
+        isWebSocketReady() {
+            return this.ws && this.ws.readyState === WebSocket.OPEN;
+        }
+
+        updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (statusEl) {
+                statusEl.textContent = status === 'connected' ? '🟢 Connected' :
+                                       status === 'polling' ? '🟡 Polling mode' : '🔴 Connecting...';
+            }
+        }
+
         enablePollingMode() {
             if (this.usePolling) return;
             this.usePolling = true;
             console.log('Polling mode enabled');
+            this.updateConnectionStatus('polling');
 
             const urlParams = new URLSearchParams(window.location.search);
             const gameCode = urlParams.get('game');
@@ -789,7 +807,16 @@
         }
 
         async createGame() {
-            if (this.usePolling) {
+            // Try WebSocket first, fall back to polling if not ready
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'CREATE_FENCE_GAME'
+                }));
+            } else {
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for createGame, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     const response = await fetch('/api/fence/create', {
                         method: 'POST',
@@ -811,17 +838,23 @@
                     console.error('Create game error:', error);
                     alert('Failed to create game. Please try again.');
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'CREATE_FENCE_GAME'
-                }));
             }
         }
 
         async joinGame(gameCode) {
             this.gameCode = gameCode;
 
-            if (this.usePolling) {
+            // Try WebSocket first, fall back to polling if not ready
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'JOIN_FENCE_GAME',
+                    gameCode: gameCode
+                }));
+            } else {
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for joinGame, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     const response = await fetch('/api/fence/join', {
                         method: 'POST',
@@ -844,11 +877,6 @@
                     console.error('Join game error:', error);
                     this.onJoinError({ error: 'Connection failed. Please try again.' });
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'JOIN_FENCE_GAME',
-                    gameCode: gameCode
-                }));
             }
         }
 
@@ -946,7 +974,18 @@
             this.updateDiagonalLines();
 
             // Send move to server
-            if (this.usePolling) {
+            if (!this.usePolling && this.isWebSocketReady()) {
+                this.ws.send(JSON.stringify({
+                    type: 'FENCE_MOVE',
+                    row: row,
+                    col: col,
+                    player: moveResult.player
+                }));
+            } else {
+                if (!this.usePolling) {
+                    console.log('WebSocket not ready for move, using polling');
+                    this.enablePollingMode();
+                }
                 try {
                     await fetch('/api/fence/move', {
                         method: 'POST',
@@ -961,13 +1000,6 @@
                 } catch (error) {
                     console.error('Move send error:', error);
                 }
-            } else {
-                this.ws.send(JSON.stringify({
-                    type: 'FENCE_MOVE',
-                    row: row,
-                    col: col,
-                    player: moveResult.player
-                }));
             }
 
             // Check for fence completion
@@ -989,7 +1021,19 @@
                     );
 
                     // Send capture to server
-                    if (this.usePolling) {
+                    if (!this.usePolling && this.isWebSocketReady()) {
+                        this.ws.send(JSON.stringify({
+                            type: 'FENCE_CAPTURE',
+                            fenceCells: Array.from(fenceResult.fenceCells),
+                            enclosedCells: Array.from(enclosedCells),
+                            capturingPlayer: moveResult.player,
+                            poolX: this.gameCore.poolX,
+                            poolO: this.gameCore.poolO,
+                            capturedByX: this.gameCore.capturedByX,
+                            capturedByO: this.gameCore.capturedByO
+                        }));
+                    } else {
+                        if (!this.usePolling) this.enablePollingMode();
                         try {
                             await fetch('/api/fence/capture', {
                                 method: 'POST',
@@ -1008,17 +1052,6 @@
                         } catch (error) {
                             console.error('Capture send error:', error);
                         }
-                    } else {
-                        this.ws.send(JSON.stringify({
-                            type: 'FENCE_CAPTURE',
-                            fenceCells: Array.from(fenceResult.fenceCells),
-                            enclosedCells: Array.from(enclosedCells),
-                            capturingPlayer: moveResult.player,
-                            poolX: this.gameCore.poolX,
-                            poolO: this.gameCore.poolO,
-                            capturedByX: this.gameCore.capturedByX,
-                            capturedByO: this.gameCore.capturedByO
-                        }));
                     }
 
                     this.visualizer.showCapture(fenceResult.fenceCells, enclosedCells, captureResult);
