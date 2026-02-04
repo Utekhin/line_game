@@ -19,6 +19,9 @@ const activeSessions = new Map(); // sessionId -> { odisconnected, gameCore stat
 const humanVsHumanGames = new Map(); // gameCode -> { playerX, playerY, moves, etc. }
 const recordedGames = []; // All completed games for admin download
 
+// Polling session tokens (for HTTP fallback)
+const pollingTokens = new Map(); // token -> { gameCode, role, lastPoll }
+
 // Generate random number for game codes
 function generatePlayerCode() {
     return Math.floor(100 + Math.random() * 900).toString(); // 3-digit code
@@ -27,6 +30,45 @@ function generatePlayerCode() {
 function generateSessionId() {
     return crypto.randomBytes(16).toString('hex');
 }
+
+function generatePollingToken() {
+    return crypto.randomBytes(24).toString('hex');
+}
+
+// Helper to parse JSON body from request
+function parseJsonBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (e) {
+                reject(e);
+            }
+        });
+        req.on('error', reject);
+    });
+}
+
+// Helper to send JSON response
+function sendJson(res, status, data) {
+    res.writeHead(status, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(data));
+}
+
+// Clean up stale polling tokens (older than 5 minutes)
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, data] of pollingTokens) {
+        if (now - data.lastPoll > 5 * 60 * 1000) {
+            pollingTokens.delete(token);
+        }
+    }
+}, 60000);
 
 // ===== HTTP SERVER =====
 const server = http.createServer((req, res) => {
@@ -47,6 +89,34 @@ const server = http.createServer((req, res) => {
     // Game recording endpoint (POST from clients)
     if (pathname === '/api/record-game' && req.method === 'POST') {
         return handleRecordGame(req, res);
+    }
+
+    // CORS preflight
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+        });
+        res.end();
+        return;
+    }
+
+    // ===== POLLING API ENDPOINTS FOR SPAN GAME =====
+    if (pathname === '/api/span/create' && req.method === 'POST') {
+        return handlePollingCreateGame(req, res);
+    }
+    if (pathname === '/api/span/join' && req.method === 'POST') {
+        return handlePollingJoinGame(req, res);
+    }
+    if (pathname === '/api/span/move' && req.method === 'POST') {
+        return handlePollingMove(req, res);
+    }
+    if (pathname === '/api/span/state' && req.method === 'GET') {
+        return handlePollingState(req, res, url);
+    }
+    if (pathname === '/api/span/gameover' && req.method === 'POST') {
+        return handlePollingGameOver(req, res);
     }
 
     // Static file serving
@@ -477,6 +547,218 @@ setInterval(() => {
         ws.ping();
     });
 }, 30000);
+
+// ===== POLLING API HANDLERS =====
+async function handlePollingCreateGame(req, res) {
+    try {
+        const body = await parseJsonBody(req);
+        const boardSize = body.boardSize || 15;
+
+        const playerXCode = generatePlayerCode();
+        const playerYCode = generatePlayerCode();
+        const gameCode = `${playerXCode}-${playerYCode}`;
+        const token = generatePollingToken();
+
+        const game = {
+            gameCode: gameCode,
+            boardSize: boardSize,
+            playerXCode: playerXCode,
+            playerYCode: playerYCode,
+            playerX: { token: token, isPolling: true },
+            playerY: null,
+            currentPlayer: 'X',
+            moves: [],
+            pendingEvents: { X: [], O: [] },
+            boardState: Array(boardSize * boardSize).fill('0').join(''),
+            created: Date.now(),
+            started: false
+        };
+
+        humanVsHumanGames.set(gameCode, game);
+        pollingTokens.set(token, { gameCode, role: 'X', lastPoll: Date.now() });
+
+        console.log(`🎮 [POLLING] Game created: ${gameCode}`);
+
+        sendJson(res, 200, {
+            success: true,
+            gameCode: gameCode,
+            token: token,
+            role: 'X'
+        });
+    } catch (error) {
+        console.error('Polling create error:', error);
+        sendJson(res, 500, { success: false, error: 'Server error' });
+    }
+}
+
+async function handlePollingJoinGame(req, res) {
+    try {
+        const body = await parseJsonBody(req);
+        const gameCode = body.gameCode;
+        const game = humanVsHumanGames.get(gameCode);
+
+        if (!game) {
+            return sendJson(res, 404, { success: false, error: 'Game not found' });
+        }
+
+        if (game.playerY) {
+            return sendJson(res, 400, { success: false, error: 'Game is full' });
+        }
+
+        const token = generatePollingToken();
+        game.playerY = { token: token, isPolling: true };
+        game.started = true;
+        pollingTokens.set(token, { gameCode, role: 'O', lastPoll: Date.now() });
+
+        // Add GAME_STARTED event for player X
+        game.pendingEvents.X.push({ type: 'GAME_STARTED' });
+
+        console.log(`🎮 [POLLING] Player O joined: ${gameCode}`);
+
+        sendJson(res, 200, {
+            success: true,
+            gameCode: gameCode,
+            token: token,
+            role: 'O',
+            boardSize: game.boardSize || 15
+        });
+    } catch (error) {
+        console.error('Polling join error:', error);
+        sendJson(res, 500, { success: false, error: 'Server error' });
+    }
+}
+
+async function handlePollingMove(req, res) {
+    try {
+        const body = await parseJsonBody(req);
+        const tokenData = pollingTokens.get(body.token);
+
+        if (!tokenData) {
+            return sendJson(res, 401, { success: false, error: 'Invalid token' });
+        }
+
+        const game = humanVsHumanGames.get(tokenData.gameCode);
+        if (!game || !game.started) {
+            return sendJson(res, 400, { success: false, error: 'Game not active' });
+        }
+
+        tokenData.lastPoll = Date.now();
+
+        // Record the move
+        const move = {
+            moveNumber: game.moves.length + 1,
+            player: body.player,
+            row: body.row,
+            col: body.col,
+            cellIndex: body.row * (game.boardSize || 15) + body.col,
+            moveType: 'human',
+            source: 'human',
+            boardState: body.boardState || game.boardState,
+            timestamp: Date.now()
+        };
+        game.moves.push(move);
+        game.boardState = body.boardState || game.boardState;
+        game.currentPlayer = body.player === 'X' ? 'O' : 'X';
+
+        // Add event for opponent
+        const opponentRole = body.player === 'X' ? 'O' : 'X';
+        game.pendingEvents[opponentRole].push({
+            type: 'OPPONENT_MOVE',
+            row: body.row,
+            col: body.col,
+            player: body.player,
+            moveNumber: move.moveNumber
+        });
+
+        sendJson(res, 200, { success: true });
+    } catch (error) {
+        console.error('Polling move error:', error);
+        sendJson(res, 500, { success: false, error: 'Server error' });
+    }
+}
+
+function handlePollingState(req, res, url) {
+    try {
+        const token = url.searchParams.get('token');
+        const tokenData = pollingTokens.get(token);
+
+        if (!tokenData) {
+            return sendJson(res, 401, { success: false, error: 'Invalid token' });
+        }
+
+        tokenData.lastPoll = Date.now();
+
+        const game = humanVsHumanGames.get(tokenData.gameCode);
+        if (!game) {
+            return sendJson(res, 404, { success: false, error: 'Game not found' });
+        }
+
+        // Get and clear pending events for this player
+        const events = game.pendingEvents[tokenData.role] || [];
+        game.pendingEvents[tokenData.role] = [];
+
+        sendJson(res, 200, {
+            success: true,
+            started: game.started,
+            currentPlayer: game.currentPlayer,
+            events: events
+        });
+    } catch (error) {
+        console.error('Polling state error:', error);
+        sendJson(res, 500, { success: false, error: 'Server error' });
+    }
+}
+
+async function handlePollingGameOver(req, res) {
+    try {
+        const body = await parseJsonBody(req);
+        const tokenData = pollingTokens.get(body.token);
+
+        if (!tokenData) {
+            return sendJson(res, 401, { success: false, error: 'Invalid token' });
+        }
+
+        const game = humanVsHumanGames.get(tokenData.gameCode);
+        if (!game) {
+            return sendJson(res, 404, { success: false, error: 'Game not found' });
+        }
+
+        // Save the recorded game
+        const gameRecord = {
+            gameId: game.gameCode,
+            gameType: 'human-vs-human',
+            winner: body.winner,
+            endReason: body.reason || 'connection',
+            resignedBy: body.reason === 'resignation' ? (body.winner === 'X' ? 'O' : 'X') : null,
+            totalMoves: game.moves.length,
+            moves: game.moves,
+            startedAt: new Date(game.created).toISOString(),
+            endedAt: new Date().toISOString()
+        };
+        saveRecordedGame(gameRecord);
+
+        // Add GAME_OVER event for opponent
+        const opponentRole = tokenData.role === 'X' ? 'O' : 'X';
+        game.pendingEvents[opponentRole].push({
+            type: 'GAME_OVER',
+            winner: body.winner,
+            reason: body.reason
+        });
+
+        console.log(`📹 [POLLING] Game ended: ${game.gameCode} - Winner: ${body.winner}`);
+
+        // Clean up after a delay (allow opponent to poll for result)
+        setTimeout(() => {
+            humanVsHumanGames.delete(tokenData.gameCode);
+            pollingTokens.delete(body.token);
+        }, 60000);
+
+        sendJson(res, 200, { success: true });
+    } catch (error) {
+        console.error('Polling gameover error:', error);
+        sendJson(res, 500, { success: false, error: 'Server error' });
+    }
+}
 
 // ===== START SERVER =====
 const PORT = process.env.PORT || 8000;
