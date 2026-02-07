@@ -14,13 +14,21 @@ class ConnectionGameCore {
         // System integrations
         this.gapRegistry = null;
         this.diagonalLinesManager = null;
-        
+        this.crossingValidator = null;
+
         // Fragment-aware settings
         this.fragmentAnalysisEnabled = true;
         this.winDetectionMethod = 'row-traversal'; // 'row-traversal' or 'legacy'
-        
+
         this.initializeBoard();
+        this._initCrossingValidator();
         console.log(`🎮 Fragment-Aware Connection Game Core initialized (${size}x${size})`);
+    }
+
+    _initCrossingValidator() {
+        if (typeof DiagonalCrossingValidator !== 'undefined') {
+            this.crossingValidator = new DiagonalCrossingValidator(this);
+        }
     }
 
     // ===== BOARD INITIALIZATION =====
@@ -566,11 +574,12 @@ class ConnectionGameCore {
 
     /**
      * ENHANCED: Validate that a connection between two pieces is not blocked by opponent
+     * Uses shared DiagonalCrossingValidator when available for consistent "first lock wins" logic
      */
     validateConnection(piece1, piece2, player) {
         const dr = Math.abs(piece2.row - piece1.row);
         const dc = Math.abs(piece2.col - piece1.col);
-        
+
         // Lateral connections (horizontal/vertical) are never blocked
         if (dr === 0 || dc === 0) {
             return {
@@ -579,16 +588,26 @@ class ConnectionGameCore {
                 reason: 'Lateral connections cannot be blocked'
             };
         }
-        
+
         // Diagonal connections need to be checked for opponent blocking
         if (dr === 1 && dc === 1) {
-            // Get opponent diagonal blocking lines
+            // Use shared crossing validator if available (preferred)
+            if (this.crossingValidator) {
+                const connected = this.crossingValidator.areDiagonallyConnected(
+                    piece1.row, piece1.col, piece2.row, piece2.col, player
+                );
+                return {
+                    isValid: connected,
+                    type: connected ? 'diagonal' : 'diagonal-blocked',
+                    reason: connected ? 'Diagonal connection clear' : 'Diagonal connection blocked by opponent (first lock wins)'
+                };
+            }
+
+            // Fallback: use diagonalLinesManager approach
             const opponent = player === 'X' ? 'O' : 'X';
             const blockingLines = this.getOpponentDiagonalBlocks(opponent);
-            
-            // Check if this diagonal is blocked
             const isBlocked = this.isConnectionBlocked(piece1, piece2, blockingLines);
-            
+
             if (isBlocked) {
                 return {
                     isValid: false,
@@ -603,7 +622,7 @@ class ConnectionGameCore {
                 };
             }
         }
-        
+
         // Should not reach here for adjacent pieces
         return {
             isValid: false,

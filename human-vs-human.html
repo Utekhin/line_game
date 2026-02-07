@@ -413,6 +413,7 @@
         </div>
     </div>
 
+    <script src="js/diagonal-crossing.js"></script>
     <script>
     // ===== GAME CONFIGURATION =====
     const GAME_CONFIG = {
@@ -454,11 +455,29 @@
             this.lastPollTime = 0;
             this.wsConnectTimeout = null;
 
+            // Crossing validator for "first lock wins" rule
+            // Uses a lightweight proxy object with the fields DiagonalCrossingValidator expects
+            this.crossingValidator = null;
+            this._initCrossingValidator();
+
             this.init();
         }
 
         createEmptyBoard() {
             return Array(this.boardSize).fill(null).map(() => Array(this.boardSize).fill(''));
+        }
+
+        _initCrossingValidator() {
+            if (typeof DiagonalCrossingValidator !== 'undefined') {
+                // Create a proxy that provides the interface DiagonalCrossingValidator expects
+                const self = this;
+                const gameCoreProxy = {
+                    get board() { return self.board; },
+                    get size() { return self.boardSize; },
+                    get gameHistory() { return self.moveHistory; }
+                };
+                this.crossingValidator = new DiagonalCrossingValidator(gameCoreProxy);
+            }
         }
 
         init() {
@@ -1024,6 +1043,7 @@
             const visited = new Set();
             const queue = [];
             const size = this.boardSize;
+            const validator = this.crossingValidator;
 
             if (player === 'X') {
                 // X needs top to bottom
@@ -1042,6 +1062,12 @@
                     const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
                     for (const [nr, nc] of neighbors) {
                         if (nr >= 0 && nr < size && nc >= 0 && nc < size && this.board[nr][nc] === 'X') {
+                            // Check diagonal crossing rule for diagonal moves
+                            const dr = Math.abs(nr - r);
+                            const dc = Math.abs(nc - c);
+                            if (dr === 1 && dc === 1 && validator) {
+                                if (!validator.areDiagonallyConnected(r, c, nr, nc, 'X')) continue;
+                            }
                             queue.push([nr, nc]);
                         }
                     }
@@ -1063,6 +1089,12 @@
                     const neighbors = [[r-1,c], [r+1,c], [r,c-1], [r,c+1], [r-1,c-1], [r-1,c+1], [r+1,c-1], [r+1,c+1]];
                     for (const [nr, nc] of neighbors) {
                         if (nr >= 0 && nr < size && nc >= 0 && nc < size && this.board[nr][nc] === 'O') {
+                            // Check diagonal crossing rule for diagonal moves
+                            const dr = Math.abs(nr - r);
+                            const dc = Math.abs(nc - c);
+                            if (dr === 1 && dc === 1 && validator) {
+                                if (!validator.areDiagonallyConnected(r, c, nr, nc, 'O')) continue;
+                            }
                             queue.push([nr, nc]);
                         }
                     }
@@ -1164,6 +1196,13 @@
         }
 
         findDiagonalConnections() {
+            // Use shared validator for accurate "first lock wins" enforcement
+            if (this.crossingValidator) {
+                this.diagonalConnections = this.crossingValidator.buildValidConnections();
+                return;
+            }
+
+            // Fallback: incremental approach (original logic)
             if (this.moveHistory.length === 0) return;
 
             const lastMove = this.moveHistory[this.moveHistory.length - 1];

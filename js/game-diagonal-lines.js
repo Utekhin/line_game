@@ -46,39 +46,41 @@ class ConnectionGameDiagonalLines {
     }
 
     // CORE: Find all diagonal connections (respecting move order and crossing rules)
+    // Delegates to shared DiagonalCrossingValidator for consistent logic
     findAllDiagonalConnections() {
-        const connections = [];
-        
         // SAFETY CHECK: Make sure game core and board are initialized
         if (!this.gameCore || !this.gameCore.board || !Array.isArray(this.gameCore.board)) {
             console.warn('Game core or board not properly initialized, skipping diagonal connections');
+            return [];
+        }
+
+        // Use shared validator if available
+        if (typeof DiagonalCrossingValidator !== 'undefined') {
+            const validator = new DiagonalCrossingValidator(this.gameCore);
+            const connections = validator.buildValidConnections().map(conn => ({
+                ...conn,
+                type: this.getDiagonalType(conn.row1, conn.col1, conn.row2, conn.col2)
+            }));
+
+            console.log(`🔗 DiagonalCrossingValidator built ${connections.length} valid connections`);
             return connections;
         }
-        
-        // Build connections incrementally based on move history to respect "first locks wins" rule
+
+        // Fallback: original incremental logic
+        const connections = [];
         const moveHistory = this.gameCore.gameHistory || [];
-        
+
         console.log(`🔗 Building diagonal connections from ${moveHistory.length} moves (chronological order)`);
-        
-        // Process moves in chronological order (CRITICAL for first-locks-wins)
+
         for (let moveIndex = 0; moveIndex < moveHistory.length; moveIndex++) {
             const move = moveHistory[moveIndex];
-            console.log(`\n🔍 Processing move ${moveIndex + 1}: ${move.player} at (${move.row},${move.col})`);
-            
             const newConnections = this.findNewConnectionsForMove(move, connections);
             connections.push(...newConnections);
-            
-            console.log(`  📊 Total connections after move ${moveIndex + 1}: ${connections.length}`);
         }
-        
-        // Also check any pieces not in history (fallback for direct board analysis)
+
         this.checkMissingPieces(moveHistory, connections);
-        
-        console.log(`\n🎯 Final diagonal connections: ${connections.length}`);
-        connections.forEach((conn, i) => {
-            console.log(`  ${i+1}. ${conn.player} (${conn.row1},${conn.col1})-(${conn.row2},${conn.col2}) [move ${conn.establishedAtMove}]`);
-        });
-        
+
+        console.log(`🎯 Final diagonal connections: ${connections.length}`);
         return connections;
     }
 

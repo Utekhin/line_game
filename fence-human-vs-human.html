@@ -536,6 +536,7 @@
         </div>
     </div>
 
+    <script src="js/diagonal-crossing.js"></script>
     <script src="js/fence-game-core.js"></script>
     <script src="js/fence-detector.js"></script>
     <script src="js/fence-region-finder.js"></script>
@@ -1182,6 +1183,13 @@
         }
 
         findDiagonalConnections() {
+            // Use crossing validator if available for accurate "first lock wins" enforcement
+            if (this.gameCore.crossingValidator) {
+                this.diagonalConnections = this.gameCore.crossingValidator.buildValidConnections();
+                return;
+            }
+
+            // Fallback: naive scan without crossing enforcement
             this.diagonalConnections = [];
             const processed = new Set();
 

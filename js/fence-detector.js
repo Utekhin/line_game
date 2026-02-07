@@ -44,7 +44,7 @@ class FenceDetector {
     }
 
     /**
-     * Get all pieces connected to a position (8-adjacency)
+     * Get all pieces connected to a position (8-adjacency, respecting crossing rule)
      */
     getConnectedComponent(startPos, player) {
         const component = new Set();
@@ -62,10 +62,16 @@ class FenceDetector {
 
             component.add(key);
 
-            const neighbors = this.gameCore.getNeighbors(pos.row, pos.col);
+            // Use getValidNeighbors to respect diagonal crossing rule
+            const neighbors = this.gameCore.getValidNeighbors
+                ? this.gameCore.getValidNeighbors(pos.row, pos.col, player)
+                : this.gameCore.getNeighbors(pos.row, pos.col).filter(
+                    n => this.gameCore.board[n.row][n.col] === player
+                );
+
             for (const neighbor of neighbors) {
                 const nKey = `${neighbor.row}-${neighbor.col}`;
-                if (!visited.has(nKey) && this.gameCore.board[neighbor.row][neighbor.col] === player) {
+                if (!visited.has(nKey)) {
                     stack.push(neighbor);
                 }
             }
@@ -202,13 +208,18 @@ class FenceDetector {
     }
 
     /**
-     * DFS helper for cycle detection
+     * DFS helper for cycle detection (respects crossing rule)
      */
     dfsDetectCycle(pos, parentPos, visited, parent, component, player) {
         const key = `${pos.row}-${pos.col}`;
         visited.add(key);
 
-        const neighbors = this.gameCore.getNeighbors(pos.row, pos.col);
+        // Use valid neighbors to respect diagonal crossing rule
+        const neighbors = this.gameCore.getValidNeighbors
+            ? this.gameCore.getValidNeighbors(pos.row, pos.col, player)
+            : this.gameCore.getNeighbors(pos.row, pos.col).filter(
+                n => this.gameCore.board[n.row][n.col] === player
+            );
 
         for (const neighbor of neighbors) {
             const nKey = `${neighbor.row}-${neighbor.col}`;

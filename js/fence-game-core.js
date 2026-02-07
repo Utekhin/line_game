@@ -1,4 +1,5 @@
 // fence-game-core.js - Core game logic for Fence game variant
+// Uses DiagonalCrossingValidator for "first lock wins" crossing rule
 
 class FenceGameCore {
     constructor(size = 15, initialPool = 50) {
@@ -18,7 +19,17 @@ class FenceGameCore {
         this.capturedByX = 0;
         this.capturedByO = 0;
 
+        // Crossing validator (initialized if DiagonalCrossingValidator is available)
+        this.crossingValidator = null;
+        this._initCrossingValidator();
+
         this.initializeBoard();
+    }
+
+    _initCrossingValidator() {
+        if (typeof DiagonalCrossingValidator !== 'undefined') {
+            this.crossingValidator = new DiagonalCrossingValidator(this);
+        }
     }
 
     initializeBoard() {
@@ -185,6 +196,18 @@ class FenceGameCore {
             }
         }
         return neighbors;
+    }
+
+    /**
+     * Get neighbors that are valid for a given player, respecting diagonal crossing rule.
+     * Only returns neighbors belonging to the same player that are actually connected.
+     */
+    getValidNeighbors(row, col, player) {
+        if (this.crossingValidator) {
+            return this.crossingValidator.getValidNeighbors(row, col, player);
+        }
+        // Fallback: return all 8-neighbors belonging to player (no crossing check)
+        return this.getNeighbors(row, col).filter(n => this.board[n.row][n.col] === player);
     }
 
     isOnBorder(row, col) {

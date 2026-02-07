@@ -1,5 +1,6 @@
 // game-core.js - Pure game logic (FIXED DIAGONAL LOGIC)
 // Simplified diagonal detection for immediate adjacency only
+// Uses DiagonalCrossingValidator for "first lock wins" crossing rule
 
 class ConnectionGameCore {
     constructor(size = 15) {
@@ -10,7 +11,15 @@ class ConnectionGameCore {
         this.moveCount = 0;
         this.gameHistory = [];
         this.diagonalConnections = []; // Simplified diagonal tracking
+        this.crossingValidator = null; // Initialized after DiagonalCrossingValidator is available
         this.initializeBoard();
+        this._initCrossingValidator();
+    }
+
+    _initCrossingValidator() {
+        if (typeof DiagonalCrossingValidator !== 'undefined') {
+            this.crossingValidator = new DiagonalCrossingValidator(this);
+        }
     }
 
     // ========================= CORE BOARD MANAGEMENT =========================
@@ -176,42 +185,42 @@ class ConnectionGameCore {
         console.log(`Updated diagonal connections: ${this.diagonalConnections.length} total`);
     }
 
-    // Find immediate diagonal connections only
+    // Find immediate diagonal connections only (respects crossing rule)
     findImmediateDiagonalConnections() {
+        // If crossing validator is available, use it for accurate results
+        if (this.crossingValidator) {
+            return this.crossingValidator.buildValidConnections().map(c => ({
+                ...c,
+                type: 'diagonal-lock'
+            }));
+        }
+
+        // Fallback: naive scan (no crossing enforcement)
         const connections = [];
-        const processed = new Set(); // Avoid duplicates
-        
-        // Check each occupied cell
+        const processed = new Set();
+
         for (let row = 0; row < this.size; row++) {
             for (let col = 0; col < this.size; col++) {
                 const player = this.board[row][col];
                 if (player === '') continue;
-                
-                // Check 4 diagonal directions from this cell
-                const diagonals = [
-                    [-1, -1], // Top-left
-                    [-1, 1],  // Top-right
-                    [1, -1],  // Bottom-left  
-                    [1, 1]    // Bottom-right
-                ];
-                
+
+                const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+
                 for (const [dr, dc] of diagonals) {
                     const newRow = row + dr;
                     const newCol = col + dc;
-                    
-                    // Check if adjacent diagonal cell has same player
-                    if (this.isValidPosition(newRow, newCol) && 
+
+                    if (this.isValidPosition(newRow, newCol) &&
                         this.board[newRow][newCol] === player) {
-                        
-                        // Create unique connection key (smaller coords first)
+
                         const key = this.createConnectionKey(row, col, newRow, newCol);
-                        
+
                         if (!processed.has(key)) {
                             processed.add(key);
                             connections.push({
                                 row1: Math.min(row, newRow),
                                 col1: row < newRow ? col : (row === newRow ? Math.min(col, newCol) : newCol),
-                                row2: Math.max(row, newRow), 
+                                row2: Math.max(row, newRow),
                                 col2: row > newRow ? col : (row === newRow ? Math.max(col, newCol) : newCol),
                                 player: player,
                                 type: 'diagonal-lock'
@@ -221,7 +230,7 @@ class ConnectionGameCore {
                 }
             }
         }
-        
+
         return connections;
     }
 
@@ -329,9 +338,15 @@ class ConnectionGameCore {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol) && 
-                this.board[newRow][newCol] === 'X' && 
+            if (this.isValidPosition(newRow, newCol) &&
+                this.board[newRow][newCol] === 'X' &&
                 !visited.has(`${newRow}-${newCol}`)) {
+                // Check diagonal crossing rule for diagonal moves
+                if (dr !== 0 && dc !== 0 && this.crossingValidator) {
+                    if (!this.crossingValidator.areDiagonallyConnected(row, col, newRow, newCol, 'X')) {
+                        continue; // Diagonal blocked by earlier opponent crossing
+                    }
+                }
                 const result = this.dfsVertical(newRow, newCol, new Set(visited));
                 if (result.connected) {
                     return { connected: true, path: new Set([...visited, ...result.path]) };
@@ -354,9 +369,15 @@ class ConnectionGameCore {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol) && 
-                this.board[newRow][newCol] === 'O' && 
+            if (this.isValidPosition(newRow, newCol) &&
+                this.board[newRow][newCol] === 'O' &&
                 !visited.has(`${newRow}-${newCol}`)) {
+                // Check diagonal crossing rule for diagonal moves
+                if (dr !== 0 && dc !== 0 && this.crossingValidator) {
+                    if (!this.crossingValidator.areDiagonallyConnected(row, col, newRow, newCol, 'O')) {
+                        continue; // Diagonal blocked by earlier opponent crossing
+                    }
+                }
                 const result = this.dfsHorizontal(newRow, newCol, new Set(visited));
                 if (result.connected) {
                     return { connected: true, path: new Set([...visited, ...result.path]) };
@@ -585,33 +606,43 @@ class ConnectionGameCore {
 
     /**
      * Find all positions connected to a starting position
+     * Respects diagonal crossing rule for immediate diagonal neighbors
      */
     findConnectedComponent(startPos, player, visited) {
         const component = [];
         const stack = [startPos];
-        
+
         while (stack.length > 0) {
             const pos = stack.pop();
             const key = `${pos.row}-${pos.col}`;
-            
+
             if (visited.has(key)) continue;
             visited.add(key);
             component.push(pos);
-            
+
             // Check all connection types (adjacent, L, I)
             const connected = this.getAdjacentPositions(pos.row, pos.col, {
                 includePlayer: player,
                 patternType: 'all'
             });
-            
+
             for (const connectedPos of connected) {
                 const connectedKey = `${connectedPos.row}-${connectedPos.col}`;
                 if (!visited.has(connectedKey)) {
+                    // For diagonal neighbors (distance 1,1), check crossing rule
+                    const dr = Math.abs(connectedPos.row - pos.row);
+                    const dc = Math.abs(connectedPos.col - pos.col);
+                    if (dr === 1 && dc === 1 && this.crossingValidator) {
+                        if (!this.crossingValidator.areDiagonallyConnected(
+                            pos.row, pos.col, connectedPos.row, connectedPos.col, player)) {
+                            continue; // Blocked diagonal
+                        }
+                    }
                     stack.push({ row: connectedPos.row, col: connectedPos.col });
                 }
             }
         }
-        
+
         return component;
     }
 
@@ -817,53 +848,73 @@ class ConnectionGameCore {
 
     /**
      * DFS to find path to bottom edge (for X)
+     * Respects diagonal crossing rule
      */
     findPathToBottom(piece, player, visited) {
         const key = `${piece.row}-${piece.col}`;
         if (visited.has(key)) return false;
         visited.add(key);
-        
+
         // Reached bottom edge
         if (piece.row === this.size - 1) return true;
-        
+
         // Check all adjacent connected pieces
         const adjacent = this.getAdjacentPositions(piece.row, piece.col, {
             includePlayer: player,
-            patternType: 'adjacent' // Only adjacent for continuous path
+            patternType: 'adjacent'
         });
-        
+
         for (const adj of adjacent) {
+            // Check diagonal crossing rule
+            const dr = Math.abs(adj.row - piece.row);
+            const dc = Math.abs(adj.col - piece.col);
+            if (dr === 1 && dc === 1 && this.crossingValidator) {
+                if (!this.crossingValidator.areDiagonallyConnected(
+                    piece.row, piece.col, adj.row, adj.col, player)) {
+                    continue;
+                }
+            }
             if (this.findPathToBottom({ row: adj.row, col: adj.col }, player, new Set(visited))) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
     /**
      * DFS to find path to right edge (for O)
+     * Respects diagonal crossing rule
      */
     findPathToRight(piece, player, visited) {
         const key = `${piece.row}-${piece.col}`;
         if (visited.has(key)) return false;
         visited.add(key);
-        
+
         // Reached right edge
         if (piece.col === this.size - 1) return true;
-        
+
         // Check all adjacent connected pieces
         const adjacent = this.getAdjacentPositions(piece.row, piece.col, {
             includePlayer: player,
-            patternType: 'adjacent' // Only adjacent for continuous path
+            patternType: 'adjacent'
         });
-        
+
         for (const adj of adjacent) {
+            // Check diagonal crossing rule
+            const dr = Math.abs(adj.row - piece.row);
+            const dc = Math.abs(adj.col - piece.col);
+            if (dr === 1 && dc === 1 && this.crossingValidator) {
+                if (!this.crossingValidator.areDiagonallyConnected(
+                    piece.row, piece.col, adj.row, adj.col, player)) {
+                    continue;
+                }
+            }
             if (this.findPathToRight({ row: adj.row, col: adj.col }, player, new Set(visited))) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
