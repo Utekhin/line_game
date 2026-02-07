@@ -244,9 +244,9 @@ class ChainHeadManager {
     }
 
     /**
-     * Select a head from the active fragment for extension (ENHANCED with balanced selection)
-     * Each head extends only once, then the new piece becomes the head.
-     * We alternate between near and far to develop the chain toward BOTH borders.
+     * Select a head from the active fragment for extension (ENHANCED with head reassignment)
+     * Uses getBestExtendingHead() to find frontier pieces when primary heads are blocked.
+     * Alternates between near and far to develop the chain toward BOTH borders.
      */
     selectRandomHead() {
         const heads = this.getHeads();
@@ -256,58 +256,62 @@ class ChainHeadManager {
             return null;
         }
 
-        // Check which heads can actually extend further
-        const nearCanExtend = this.canHeadExtend('near');
-        const farCanExtend = this.canHeadExtend('far');
+        // ENHANCED: Get best extending heads (with frontier piece fallback)
+        const nearExtendingHead = this.getBestExtendingHead('near');
+        const farExtendingHead = this.getBestExtendingHead('far');
 
-        this.log(`🎯 Active fragment head extension: near=${nearCanExtend}, far=${farCanExtend}, lastExtended=${this.lastExtendedHeadType}`);
+        const nearCanExtend = nearExtendingHead !== null;
+        const farCanExtend = farExtendingHead !== null;
 
-        // PRIORITY 1: Only one head can extend - use it
+        this.log(`🎯 Head selection: near=${nearCanExtend}, far=${farCanExtend}, lastExtended=${this.lastExtendedHeadType}`);
+
+        // PRIORITY 1: Only one direction has extending pieces - use it
         if (farCanExtend && !nearCanExtend) {
-            this.log('🎯 Selecting far head - only one that can extend');
+            this.log(`🎯 Selecting far head (${farExtendingHead.row},${farExtendingHead.col}) - only direction with extensions`);
             this.lastExtendedHeadType = 'far';
-            return heads.farBorder;
+            return farExtendingHead;
         }
 
         if (nearCanExtend && !farCanExtend) {
-            this.log('🎯 Selecting near head - only one that can extend');
+            this.log(`🎯 Selecting near head (${nearExtendingHead.row},${nearExtendingHead.col}) - only direction with extensions`);
             this.lastExtendedHeadType = 'near';
-            return heads.nearBorder;
+            return nearExtendingHead;
         }
 
-        // PRIORITY 2: Both can extend - use BALANCED selection (alternate directions)
+        // PRIORITY 2: Both directions have extending pieces - use BALANCED selection
         if (nearCanExtend && farCanExtend) {
             let selectedHead;
             let selectedType;
 
             if (this.lastExtendedHeadType === 'far') {
                 // Last extension was far direction, now extend near
-                selectedHead = heads.nearBorder;
+                selectedHead = nearExtendingHead;
                 selectedType = 'near';
-                this.log(`🔄 Balanced selection: last was FAR, now selecting NEAR head at (${selectedHead.row},${selectedHead.col})`);
+                this.log(`🔄 Balanced selection: last was FAR, now selecting NEAR at (${selectedHead.row},${selectedHead.col})`);
             } else if (this.lastExtendedHeadType === 'near') {
                 // Last extension was near direction, now extend far
-                selectedHead = heads.farBorder;
+                selectedHead = farExtendingHead;
                 selectedType = 'far';
-                this.log(`🔄 Balanced selection: last was NEAR, now selecting FAR head at (${selectedHead.row},${selectedHead.col})`);
+                this.log(`🔄 Balanced selection: last was NEAR, now selecting FAR at (${selectedHead.row},${selectedHead.col})`);
             } else {
-                // First extension (lastExtendedHeadType is null) - random choice
-                selectedHead = Math.random() < 0.5 ? heads.nearBorder : heads.farBorder;
-                selectedType = selectedHead === heads.nearBorder ? 'near' : 'far';
-                this.log(`🎲 First extension - randomly selected ${selectedType} head at (${selectedHead.row},${selectedHead.col})`);
+                // First extension - random choice
+                selectedHead = Math.random() < 0.5 ? nearExtendingHead : farExtendingHead;
+                selectedType = selectedHead === nearExtendingHead ? 'near' : 'far';
+                this.log(`🎲 First extension - randomly selected ${selectedType} at (${selectedHead.row},${selectedHead.col})`);
             }
 
             this.lastExtendedHeadType = selectedType;
             return selectedHead;
         }
 
-        // PRIORITY 3: Neither can extend - return one for border connections (don't update tracking)
+        // PRIORITY 3: No extensions available - return primary head for border connections
+        this.log('⚠️ No frontier pieces can extend in either direction');
         if (heads.farBorder) {
-            this.log('🎯 No heads can extend - returning far head for potential border connection');
+            this.log(`🎯 Returning primary far head (${heads.farBorder.row},${heads.farBorder.col}) for potential border connection`);
             return heads.farBorder;
         }
 
-        this.log('🎯 No heads can extend - returning near head for potential border connection');
+        this.log(`🎯 Returning primary near head (${heads.nearBorder.row},${heads.nearBorder.col}) for potential border connection`);
         return heads.nearBorder;
     }
 
@@ -320,38 +324,146 @@ class ChainHeadManager {
     }
 
     /**
-     * Check if a head can extend in its direction (SAME API as before)
+     * Check if a head can extend in its direction (ENHANCED: checks actual move availability)
      */
     canHeadExtend(headType) {
         const heads = this.getHeads();
         const head = headType === 'near' ? heads.nearBorder : heads.farBorder;
         if (!head) return false;
-        
+
+        // First check positional limit
+        if (this.player === 'X') {
+            if (headType === 'near' && head.row <= 1) return false;
+            if (headType === 'far' && head.row >= this.gameCore.size - 2) return false;
+        } else {
+            if (headType === 'near' && head.col <= 1) return false;
+            if (headType === 'far' && head.col >= this.gameCore.size - 2) return false;
+        }
+
+        // ENHANCED: Check if there are actual valid moves from this head
+        const hasValidMoves = this.headHasValidExtensionMoves(head, headType);
+        this.log(`🔍 ${headType} head (${head.row},${head.col}): hasValidMoves = ${hasValidMoves}`);
+        return hasValidMoves;
+    }
+
+    /**
+     * NEW: Check if a head has at least one valid extension move
+     */
+    headHasValidExtensionMoves(head, headType) {
+        const extensionPatterns = this.getExtensionPatterns(headType);
+
+        for (const [dr, dc] of extensionPatterns) {
+            const targetRow = head.row + dr;
+            const targetCol = head.col + dc;
+
+            if (this.isValidExtensionTarget(targetRow, targetCol)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * NEW: Get extension patterns for a head type (L-patterns and direct)
+     */
+    getExtensionPatterns(headType) {
+        const patterns = [];
+
         if (this.player === 'X') {
             if (headType === 'near') {
-                // Near head extends toward top (row 0)
-                const canExtend = head.row > 1;
-                this.log(`🔍 Near head (${head.row},${head.col}): Can extend toward top = ${canExtend} (row > 1)`);
-                return canExtend;
+                // Extend toward top (negative row)
+                patterns.push([-2, 1], [-2, -1], [-1, 2], [-1, -2]); // L-patterns
+                patterns.push([-1, 0], [-1, 1], [-1, -1]); // Direct
             } else {
-                // Far head extends toward bottom (row 14)
-                const canExtend = head.row < this.gameCore.size - 2;
-                this.log(`🔍 Far head (${head.row},${head.col}): Can extend toward bottom = ${canExtend} (row < ${this.gameCore.size - 2})`);
-                return canExtend;
+                // Extend toward bottom (positive row)
+                patterns.push([2, 1], [2, -1], [1, 2], [1, -2]); // L-patterns
+                patterns.push([1, 0], [1, 1], [1, -1]); // Direct
             }
         } else {
             if (headType === 'near') {
-                // Near head extends toward left (col 0)
-                const canExtend = head.col > 1;
-                this.log(`🔍 Near head (${head.row},${head.col}): Can extend toward left = ${canExtend} (col > 1)`);
-                return canExtend;
+                // Extend toward left (negative col)
+                patterns.push([1, -2], [-1, -2], [2, -1], [-2, -1]); // L-patterns
+                patterns.push([0, -1], [1, -1], [-1, -1]); // Direct
             } else {
-                // Far head extends toward right (col 14)
-                const canExtend = head.col < this.gameCore.size - 2;
-                this.log(`🔍 Far head (${head.row},${head.col}): Can extend toward right = ${canExtend} (col < ${this.gameCore.size - 2})`);
-                return canExtend;
+                // Extend toward right (positive col)
+                patterns.push([1, 2], [-1, 2], [2, 1], [-2, 1]); // L-patterns
+                patterns.push([0, 1], [1, 1], [-1, 1]); // Direct
             }
         }
+
+        return patterns;
+    }
+
+    /**
+     * NEW: Check if a target position is valid for extension
+     */
+    isValidExtensionTarget(row, col) {
+        if (!this.gameCore.isValidPosition(row, col)) return false;
+        if (this.gameCore.board[row][col] !== '') return false;
+        if (!this.gameCore.isValidMove(row, col)) return false;
+        return true;
+    }
+
+    /**
+     * NEW: Find all frontier pieces that can extend in a direction
+     */
+    findFrontierPieces(headType) {
+        if (!this.activeFragment) return [];
+
+        const frontierPieces = [];
+        const fragment = this.activeFragment.fragment;
+
+        for (const piece of fragment.pieces) {
+            if (this.headHasValidExtensionMoves(piece, headType)) {
+                frontierPieces.push(piece);
+            }
+        }
+
+        // Sort frontier pieces by how far they are toward the target border
+        if (this.player === 'X') {
+            if (headType === 'near') {
+                frontierPieces.sort((a, b) => a.row - b.row); // Closest to top first
+            } else {
+                frontierPieces.sort((a, b) => b.row - a.row); // Closest to bottom first
+            }
+        } else {
+            if (headType === 'near') {
+                frontierPieces.sort((a, b) => a.col - b.col); // Closest to left first
+            } else {
+                frontierPieces.sort((a, b) => b.col - a.col); // Closest to right first
+            }
+        }
+
+        this.log(`🎯 Found ${frontierPieces.length} frontier pieces for ${headType} direction`);
+        return frontierPieces;
+    }
+
+    /**
+     * NEW: Get best extending head (with fallback to frontier pieces)
+     */
+    getBestExtendingHead(headType) {
+        const heads = this.getHeads();
+        const primaryHead = headType === 'near' ? heads.nearBorder : heads.farBorder;
+
+        // First try the primary head
+        if (primaryHead && this.headHasValidExtensionMoves(primaryHead, headType)) {
+            this.log(`✅ Primary ${headType} head (${primaryHead.row},${primaryHead.col}) can extend`);
+            return primaryHead;
+        }
+
+        // Primary head is blocked - find alternative from frontier pieces
+        this.log(`⚠️ Primary ${headType} head is blocked, searching for alternatives...`);
+        const frontierPieces = this.findFrontierPieces(headType);
+
+        if (frontierPieces.length > 0) {
+            const alternative = frontierPieces[0];
+            this.log(`🔄 HEAD REASSIGNMENT: Using frontier piece (${alternative.row},${alternative.col}) instead of blocked head`);
+            return alternative;
+        }
+
+        this.log(`❌ No frontier pieces available for ${headType} direction`);
+        return null;
     }
 
     /**
