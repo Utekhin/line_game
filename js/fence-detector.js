@@ -83,6 +83,7 @@ class FenceDetector {
     /**
      * Detect border-to-border fence
      * A fence connects any two different borders (top, bottom, left, right)
+     * Uses shortest path between borders (not the entire component) as fence cells
      */
     detectBorderToBorderFence(component, player) {
         const size = this.gameCore.size;
@@ -104,7 +105,7 @@ class FenceDetector {
             if (col === size - 1) borderInfo.right.push({ row, col, key });
         }
 
-        // Check all pairs of different borders
+        // Check all pairs of different borders, find the shortest fence path
         const borderPairs = [
             ['top', 'bottom'],
             ['left', 'right'],
@@ -114,14 +115,89 @@ class FenceDetector {
             ['bottom', 'right']
         ];
 
+        let bestResult = null;
+        let bestPathLength = Infinity;
+
         for (const [border1, border2] of borderPairs) {
-            if (borderInfo[border1].length > 0 && borderInfo[border2].length > 0) {
-                // Found a fence connecting two borders
-                return this.createFenceResult(component, border1, border2, borderInfo, size);
+            if (borderInfo[border1].length === 0 || borderInfo[border2].length === 0) continue;
+
+            // Find shortest path between the two borders within the component
+            const path = this.findShortestPath(component, player, borderInfo[border1], borderInfo[border2]);
+            if (!path || path.size >= bestPathLength) continue;
+
+            // Recompute border info from the path only (not the whole component)
+            const pathBorderInfo = { top: [], bottom: [], left: [], right: [] };
+            for (const key of path) {
+                const [row, col] = key.split('-').map(Number);
+                if (row === 0) pathBorderInfo.top.push({ row, col, key });
+                if (row === size - 1) pathBorderInfo.bottom.push({ row, col, key });
+                if (col === 0) pathBorderInfo.left.push({ row, col, key });
+                if (col === size - 1) pathBorderInfo.right.push({ row, col, key });
+            }
+
+            bestResult = this.createFenceResult(path, border1, border2, pathBorderInfo, size);
+            bestPathLength = path.size;
+        }
+
+        if (bestResult) {
+            console.log('Border-to-border fence detected!', bestResult);
+        }
+        return bestResult;
+    }
+
+    /**
+     * BFS to find shortest path from any cell on border1 to any cell on border2
+     * within the connected component, respecting diagonal crossing rules
+     */
+    findShortestPath(component, player, border1Cells, border2Cells) {
+        const border2Keys = new Set(border2Cells.map(c => `${c.row}-${c.col}`));
+        const queue = [];
+        const parent = new Map();
+
+        for (const cell of border1Cells) {
+            const key = `${cell.row}-${cell.col}`;
+            // Don't start BFS from cells that are on both borders (corner cells)
+            // so they can be discovered as destinations via BFS
+            if (component.has(key) && !border2Keys.has(key)) {
+                queue.push(key);
+                parent.set(key, null);
             }
         }
 
-        return null;
+        while (queue.length > 0) {
+            const key = queue.shift();
+
+            // Check if we reached border2 (and path has at least 2 cells)
+            if (border2Keys.has(key) && parent.get(key) !== null) {
+                // Reconstruct path
+                const path = new Set();
+                let current = key;
+                while (current !== null) {
+                    path.add(current);
+                    current = parent.get(current);
+                }
+                return path;
+            }
+
+            const [row, col] = key.split('-').map(Number);
+
+            // Get valid neighbors within the component
+            const neighbors = this.gameCore.getValidNeighbors
+                ? this.gameCore.getValidNeighbors(row, col, player)
+                : this.gameCore.getNeighbors(row, col).filter(
+                    n => this.gameCore.board[n.row][n.col] === player
+                );
+
+            for (const n of neighbors) {
+                const nKey = `${n.row}-${n.col}`;
+                if (!parent.has(nKey) && component.has(nKey)) {
+                    parent.set(nKey, key);
+                    queue.push(nKey);
+                }
+            }
+        }
+
+        return null; // No path found
     }
 
     /**
